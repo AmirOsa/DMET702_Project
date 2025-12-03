@@ -1,3 +1,0 @@
-﻿  main.cpp
-GLTexture.obj : warning LNK4075: ignoring '/EDITANDCONTINUE' due to '/INCREMENTAL:NO' specification
-  OpenGLMeshLoader.vcxproj -> C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\Lab 7\Debug\OpenGLMeshLoader19.exe
