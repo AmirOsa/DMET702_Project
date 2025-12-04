@@ -1,7 +1,12 @@
-// ===============================
+﻿// ===============================
 // DMET 502 . Team El 3ennab
-// Level 1 . Person A (Environment + Mechanics)
 // ===============================
+
+// ========================
+// CHOOSE WHICH LEVEL TO RUN
+// ========================
+#define RUN_LEVEL_2  // Comment this to run Level 1, uncomment to run Level 2
+// ========================
 
 #pragma warning(disable : 2381)   // ignore 'exit' redefinition from old GLUT vs stdlib
 
@@ -17,7 +22,65 @@
 #include <time.h>
 
 // ===============================
-// Global game state
+// SHARED UTILITIES (used by both levels)
+// ===============================
+
+enum CameraMode { FIRST_PERSON, THIRD_PERSON };
+enum GameState { GAME_PLAYING, GAME_WON, GAME_LOST };
+
+// Simple Axis Aligned Bounding Box on XZ plane
+struct AABB {
+    float x, z;   // center position in XZ plane
+    float halfW;  // half width on X
+    float halfD;  // half depth on Z
+    bool  active; // for collectibles and checkpoint
+};
+
+// 2D text rendering for HUD (shared)
+void drawText2D(float x, float y, const char* text) {
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(-1, 1, -1, 1);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glDisable(GL_LIGHTING); // HUD should not be lit
+
+    glRasterPos2f(x, y);
+    for (int i = 0; text[i] != '\0'; i++) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
+    }
+
+    glEnable(GL_LIGHTING);
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
+// Random helper functions (shared)
+float randRange(float minVal, float maxVal) {
+    return minVal + (maxVal - minVal) * (rand() / (float)RAND_MAX);
+}
+
+// Collision check (shared)
+bool checkAABBCollision(const AABB& a, const AABB& b) {
+    bool overlapX = fabs(a.x - b.x) <= (a.halfW + b.halfW);
+    bool overlapZ = fabs(a.z - b.z) <= (a.halfD + b.halfD);
+    return overlapX && overlapZ;
+}
+
+// ===============================
+// LEVEL 1 CODE (MOHANAD'S WORK - COMPLETE AND UNCHANGED)
+// ===============================
+#ifndef RUN_LEVEL_2
+
+// ===============================
+// Global game state - Level 1
 // ===============================
 
 // Player state
@@ -34,7 +97,6 @@ const float streetStartZ = 5.0f;      // near camera
 const float streetEndZ = -1000.0f;  // far end
 
 // Camera
-enum CameraMode { FIRST_PERSON, THIRD_PERSON };
 CameraMode cameraMode = THIRD_PERSON;
 
 // Camera parameters
@@ -44,14 +106,6 @@ float thirdPersonHeight = 4.0f; // how high camera is above player
 
 // Score
 int score = 0;
-
-// Simple Axis Aligned Bounding Box on XZ plane
-struct AABB {
-    float x, z;   // center position in XZ plane
-    float halfW;  // half width on X
-    float halfD;  // half depth on Z
-    bool  active; // for collectibles and checkpoint
-};
 
 // Limits
 const int MAX_CARS = 50;
@@ -88,11 +142,7 @@ int difficultyLevel = 0;
 bool checkpointSpawned20s = false;
 bool checkpointSpawned3s = false;
 
-// ===============================
 // Game state and timer
-// ===============================
-
-enum GameState { GAME_PLAYING, GAME_WON, GAME_LOST };
 GameState gameState = GAME_PLAYING;
 
 // Timer, 60 seconds for Level 1
@@ -100,10 +150,7 @@ const int gameDurationMs = 60000;   // 60 * 1000
 int       gameStartTimeMs = 0;      // when level started in ms
 int       remainingTimeMs = 60000;  // remaining time in ms
 
-// ===============================
 // Models . Person B will fill paths and textures
-// ===============================
-
 Model_3DS playerModel;
 Model_3DS carModel;
 Model_3DS trashModel;
@@ -113,14 +160,8 @@ Model_3DS buildingModel;
 Model_3DS lampModel;
 
 // ===============================
-// Helper functions
+// Helper functions - Level 1 specific
 // ===============================
-
-bool checkAABBCollision(const AABB& a, const AABB& b) {
-    bool overlapX = fabs(a.x - b.x) <= (a.halfW + b.halfW);
-    bool overlapZ = fabs(a.z - b.z) <= (a.halfD + b.halfD);
-    return overlapX && overlapZ;
-}
 
 AABB getPlayerAABB() {
     AABB p;
@@ -150,10 +191,6 @@ void handleObstacleCollision(const AABB& obstacle) {
     // 4. Clamp inside street after the push
     if (playerX < streetMinX) playerX = streetMinX;
     if (playerX > streetMaxX) playerX = streetMaxX;
-}
-
-float randRange(float minVal, float maxVal) {
-    return minVal + (maxVal - minVal) * (rand() / (float)RAND_MAX);
 }
 
 void spawnExtraObstacles(int extraCars, int extraTrash) {
@@ -272,32 +309,6 @@ void setupCamera() {
             0, 1, 0
         );
     }
-}
-
-// 2D text rendering for HUD
-void drawText2D(float x, float y, const char* text) {
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    gluOrtho2D(-1, 1, -1, 1);
-
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-
-    glDisable(GL_LIGHTING); // HUD should not be lit
-
-    glRasterPos2f(x, y);
-    for (int i = 0; text[i] != '\0'; i++) {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
-    }
-
-    glEnable(GL_LIGHTING);
-
-    glPopMatrix();
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
 }
 
 void drawScore() {
@@ -466,7 +477,7 @@ void drawPlayer() {
 }
 
 // ===============================
-// Lighting
+// Lighting - Level 1 specific
 // ===============================
 
 void applyLampLight() {
@@ -500,7 +511,7 @@ void updateLamp(float deltaTime) {
 }
 
 // ===============================
-// GLUT callbacks
+// GLUT callbacks - Level 1
 // ===============================
 
 void display() {
@@ -694,7 +705,7 @@ void reshape(int w, int h) {
 }
 
 // ===============================
-// Initialization
+// Initialization - Level 1
 // ===============================
 
 void loadModels() {
@@ -729,22 +740,596 @@ void initGL() {
     gameState = GAME_PLAYING;
 }
 
+#endif // RUN_LEVEL_2 - End of Level 1 code
+
+// ===================================================================
+// LEVEL 2 CODE STARTS HERE - Amir's Work
+// ===================================================================
+#ifdef RUN_LEVEL_2
+
 // ===============================
-// main
+// Level 2 Specific Structures - Amir's Work
+// ===============================
+
+// Level 2 AABB with Y coordinate for flying - Amir's Work
+struct AABB_L2 {
+    float x, y, z;   // 3D position
+    float halfW, halfD, halfH; // 3D dimensions
+    bool active;
+};
+
+// ===============================
+// Level 2 Global Variables - Amir's Work
+// ===============================
+
+// Player state for flying - Amir's Work
+float playerX_L2 = 0.0f;      // side movement
+float playerY_L2 = 25.0f;     // flying height (Y-axis)
+float playerZ_L2 = 0.0f;      // forward movement (flying direction, negative Z)
+
+// Flying boundaries - Amir's Work
+const float riverWidth = 80.0f;
+const float riverMinX = -riverWidth / 2;
+const float riverMaxX = riverWidth / 2;
+const float minHeight = 10.0f;
+const float maxHeight = 50.0f;
+
+// Camera - Amir's Work
+CameraMode cameraMode_L2 = THIRD_PERSON;
+float thirdPersonDist_L2 = 15.0f;  // Camera distance behind player
+float thirdPersonHeight_L2 = 8.0f; // Camera height above player
+
+// Score - Amir's Work
+int score_L2 = 0;
+
+// Flying collectibles (3ennabeyat) - Amir's Work
+const int MAX_FLYING_COLLECTIBLES = 50;
+AABB_L2 flyingCollectibles[MAX_FLYING_COLLECTIBLES];
+int numFlyingCollectibles = 0;
+
+// Obstacles (birds) - Amir's Work
+const int MAX_BIRDS = 20;
+AABB_L2 birds[MAX_BIRDS];
+int numBirds = 0;
+
+// Target (Dr. Beram) - Amir's Work
+AABB_L2 drBeram;
+
+// Lighting for sunset - Amir's Work
+float sunColor[3] = { 1.0f, 0.9f, 0.0f }; // Yellow (start)
+float sunsetProgress = 0.0f; // 0.0 = start, 1.0 = sunset complete
+
+// Time and movement - Amir's Work
+int prevTimeMs_L2 = 0;
+float moveStep_L2 = 1.2f; // Flying speed
+float verticalSpeed = 0.0f; // For up/down movement
+
+// Game state - Amir's Work
+GameState gameState_L2 = GAME_PLAYING;
+const int level2DurationMs = 90000; // 90 seconds for flying level
+int level2StartTimeMs = 0;
+int remainingTime_L2 = level2DurationMs;
+
+// Models (to be loaded by Person B) - Amir's Work
+Model_3DS playerModel_L2;
+Model_3DS birdModel;
+Model_3DS collectibleModel_L2;
+Model_3DS drBeramModel;
+
+// ===============================
+// Level 2 Helper Functions - Amir's Work
+// ===============================
+
+// Check collision in 3D - Amir's Work
+bool checkAABBCollision3D(const AABB_L2& a, const AABB_L2& b) {
+    bool overlapX = fabs(a.x - b.x) <= (a.halfW + b.halfW);
+    bool overlapY = fabs(a.y - b.y) <= (a.halfH + b.halfH);
+    bool overlapZ = fabs(a.z - b.z) <= (a.halfD + b.halfD);
+    return overlapX && overlapY && overlapZ;
+}
+
+// Get player's 3D bounding box - Amir's Work
+AABB_L2 getPlayerAABB_L2() {
+    AABB_L2 p;
+    p.x = playerX_L2;
+    p.y = playerY_L2;
+    p.z = playerZ_L2;
+    p.halfW = 1.5f;   // Player width
+    p.halfH = 1.5f;   // Player height
+    p.halfD = 1.5f;   // Player depth
+    p.active = true;
+    return p;
+}
+
+// Handle collision with bird - Amir's Work
+void handleBirdCollision() {
+    // Deduct points
+    score_L2 -= 15;
+    if (score_L2 < 0) score_L2 = 0;
+
+    // Push back and down
+    playerZ_L2 += 3.0f;
+    playerY_L2 -= 2.0f;
+
+    // Clamp position
+    if (playerY_L2 < minHeight) playerY_L2 = minHeight;
+    if (playerY_L2 > maxHeight) playerY_L2 = maxHeight;
+}
+
+// Random float in range - Amir's Work (using shared randRange)
+float randFloat(float minVal, float maxVal) {
+    return randRange(minVal, maxVal);
+}
+
+// Setup Level 2 - Flying over Nile - Amir's Work
+void setupLevel2() {
+    // Reset player
+    playerX_L2 = 0.0f;
+    playerY_L2 = 25.0f;
+    playerZ_L2 = 0.0f;
+    score_L2 = 0;
+    sunsetProgress = 0.0f;
+    sunColor[0] = 1.0f; // Red
+    sunColor[1] = 0.9f; // Green
+    sunColor[2] = 0.0f; // Blue
+
+    // Setup flying collectibles (3ennabeyat) - Amir's Work
+    numFlyingCollectibles = 40;
+    for (int i = 0; i < numFlyingCollectibles; i++) {
+        flyingCollectibles[i].x = randFloat(riverMinX + 5, riverMaxX - 5);
+        flyingCollectibles[i].y = randFloat(15, 40); // Different heights
+        flyingCollectibles[i].z = -50.0f - (i * 25.0f); // Spread along Z
+        flyingCollectibles[i].halfW = 1.0f;
+        flyingCollectibles[i].halfH = 1.0f;
+        flyingCollectibles[i].halfD = 1.0f;
+        flyingCollectibles[i].active = true;
+    }
+
+    // Setup birds (obstacles) - Amir's Work
+    numBirds = 15;
+    for (int i = 0; i < numBirds; i++) {
+        birds[i].x = randFloat(riverMinX + 10, riverMaxX - 10);
+        birds[i].y = randFloat(20, 35);
+        birds[i].z = -80.0f - (i * 40.0f);
+        birds[i].halfW = 2.0f;
+        birds[i].halfH = 1.0f;
+        birds[i].halfD = 3.0f;
+        birds[i].active = true;
+    }
+
+    // Setup Dr. Beram (target) - Amir's Work
+    drBeram.x = 0.0f;
+    drBeram.y = 30.0f;
+    drBeram.z = -800.0f; // Far ahead
+    drBeram.halfW = 2.0f;
+    drBeram.halfH = 3.0f;
+    drBeram.halfD = 1.0f;
+    drBeram.active = true;
+}
+
+// Camera for flying level - Amir's Work
+void setupCameraLevel2() {
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    if (cameraMode_L2 == THIRD_PERSON) {
+        // Third person: behind and above - Amir's Work
+        float camX = playerX_L2;
+        float camY = playerY_L2 + thirdPersonHeight_L2;
+        float camZ = playerZ_L2 + thirdPersonDist_L2;
+
+        gluLookAt(camX, camY, camZ,
+            playerX_L2, playerY_L2, playerZ_L2 - 20.0f,
+            0, 1, 0);
+    }
+    else {
+        // First person (optional) - Amir's Work
+        gluLookAt(playerX_L2, playerY_L2 + 2.0f, playerZ_L2,
+            playerX_L2, playerY_L2 + 2.0f, playerZ_L2 - 20.0f,
+            0, 1, 0);
+    }
+}
+
+// Draw sky with sunset gradient - Amir's Work
+void drawSky() {
+    glDisable(GL_LIGHTING);
+
+    // Sky gradient - Amir's Work
+    glBegin(GL_QUADS);
+    // Top color (darker blue/orange) - Amir's Work
+    glColor3f(0.1f, 0.2f, 0.8f - sunsetProgress * 0.4f);
+    glVertex3f(-500, 200, -1500);
+    glVertex3f(500, 200, -1500);
+
+    // Bottom color (lighter, more orange) - Amir's Work
+    glColor3f(0.6f + sunsetProgress * 0.3f,
+        0.3f + sunsetProgress * 0.5f,
+        0.1f);
+    glVertex3f(500, -50, 500);
+    glVertex3f(-500, -50, 500);
+    glEnd();
+
+    glEnable(GL_LIGHTING);
+}
+
+// Draw Nile River - Amir's Work
+void drawNileRiver() {
+    glColor3f(0.0f, 0.3f, 0.6f); // Nile blue - Amir's Work
+
+    glBegin(GL_QUADS);
+    glVertex3f(-200, 0, -1500);
+    glVertex3f(200, 0, -1500);
+    glVertex3f(200, 0, 500);
+    glVertex3f(-200, 0, 500);
+    glEnd();
+
+    // River banks - Amir's Work
+    glColor3f(0.4f, 0.3f, 0.1f); // Brown banks - Amir's Work
+    glBegin(GL_QUADS);
+    // Left bank - Amir's Work
+    glVertex3f(-250, 0, -1500);
+    glVertex3f(-200, 0, -1500);
+    glVertex3f(-200, 0, 500);
+    glVertex3f(-250, 0, 500);
+    // Right bank - Amir's Work
+    glVertex3f(200, 0, -1500);
+    glVertex3f(250, 0, -1500);
+    glVertex3f(250, 0, 500);
+    glVertex3f(200, 0, 500);
+    glEnd();
+}
+
+// Draw flying collectibles (3ennabeyat) - Amir's Work
+void drawFlyingCollectibles() {
+    glColor3f(1.0f, 0.0f, 0.0f); // Red for 3ennab - Amir's Work
+
+    for (int i = 0; i < numFlyingCollectibles; i++) {
+        if (!flyingCollectibles[i].active) continue;
+
+        glPushMatrix();
+        glTranslatef(flyingCollectibles[i].x,
+            flyingCollectibles[i].y,
+            flyingCollectibles[i].z);
+        glutSolidSphere(1.5, 16, 16); // Placeholder - Amir's Work
+        glPopMatrix();
+    }
+}
+
+// Draw birds - Amir's Work
+void drawBirds() {
+    glColor3f(0.5f, 0.5f, 0.5f); // Gray birds - Amir's Work
+
+    for (int i = 0; i < numBirds; i++) {
+        if (!birds[i].active) continue;
+
+        glPushMatrix();
+        glTranslatef(birds[i].x, birds[i].y, birds[i].z);
+
+        // Simple bird shape (two spheres) - Amir's Work
+        glutSolidSphere(1.5, 8, 8); // Body - Amir's Work
+        glPushMatrix();
+        glTranslatef(0, 0, -2.0f);
+        glutSolidSphere(0.8, 8, 8); // Head - Amir's Work
+        glPopMatrix();
+
+        glPopMatrix();
+    }
+}
+
+// Draw Dr. Beram - Amir's Work
+void drawDrBeram() {
+    if (!drBeram.active) return;
+
+    glPushMatrix();
+    glTranslatef(drBeram.x, drBeram.y, drBeram.z);
+    glColor3f(0.0f, 1.0f, 0.0f); // Green for visibility - Amir's Work
+    glutSolidCube(4.0); // Placeholder - Amir's Work
+    glPopMatrix();
+}
+
+// Draw flying player - Amir's Work
+void drawPlayerLevel2() {
+    glPushMatrix();
+    glTranslatef(playerX_L2, playerY_L2, playerZ_L2);
+
+    // Simple flying superhero shape - Amir's Work
+    glColor3f(1.0f, 0.5f, 0.0f); // Orange hero - Amir's Work
+
+    // Body - Amir's Work
+    glPushMatrix();
+    glScalef(1.5f, 3.0f, 1.0f);
+    glutSolidCube(1.0);
+    glPopMatrix();
+
+    // Head - Amir's Work
+    glPushMatrix();
+    glTranslatef(0, 2.2f, 0);
+    glutSolidSphere(0.8, 16, 16);
+    glPopMatrix();
+
+    // Wings (simple triangles) - Amir's Work
+    glDisable(GL_LIGHTING);
+    glColor3f(0.8f, 0.8f, 0.0f);
+    glBegin(GL_TRIANGLES);
+    // Left wing - Amir's Work
+    glVertex3f(-2.5f, 0, 0);
+    glVertex3f(-4.0f, 0, -2.0f);
+    glVertex3f(-2.5f, 0, -2.0f);
+    // Right wing - Amir's Work
+    glVertex3f(2.5f, 0, 0);
+    glVertex3f(4.0f, 0, -2.0f);
+    glVertex3f(2.5f, 0, -2.0f);
+    glEnd();
+    glEnable(GL_LIGHTING);
+
+    glPopMatrix();
+}
+
+// Setup sunset lighting - Amir's Work
+void setupSunLight() {
+    glEnable(GL_LIGHTING);
+    glEnable(GL_LIGHT0);
+
+    // Sun color changes from yellow to orange/red - Amir's Work
+    GLfloat lightDiffuse[] = { sunColor[0], sunColor[1], sunColor[2], 1.0f };
+    GLfloat lightAmbient[] = { 0.3f, 0.3f, 0.3f, 1.0f };
+    GLfloat lightSpecular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+    // Sun position (high and to the side) - Amir's Work
+    GLfloat lightPosition[] = { 100.0f, 150.0f, -300.0f, 1.0f };
+
+    glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, lightSpecular);
+    glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
+}
+
+// Update sunset progress - Amir's Work
+void updateSunset(float deltaTime) {
+    // Gradually progress sunset - Amir's Work
+    sunsetProgress += deltaTime * 0.02f; // Adjust speed as needed
+    if (sunsetProgress > 1.0f) sunsetProgress = 1.0f;
+
+    // Interpolate from yellow (1, 0.9, 0) to orange/red (1, 0.3, 0) - Amir's Work
+    sunColor[0] = 1.0f;                    // Red stays high
+    sunColor[1] = 0.9f - (sunsetProgress * 0.6f); // Green decreases
+    sunColor[2] = 0.0f;                    // Blue stays 0
+}
+
+// Draw HUD for Level 2 - Amir's Work
+void drawScoreLevel2() {
+    char buffer[64];
+    sprintf(buffer, "Score: %d", score_L2);
+    drawText2D(-0.95f, 0.9f, buffer);
+}
+
+void drawTimerLevel2() {
+    int seconds = remainingTime_L2 / 1000;
+    if (seconds < 0) seconds = 0;
+    char buffer[64];
+    sprintf(buffer, "Time: %02d", seconds);
+    drawText2D(0.6f, 0.9f, buffer);
+}
+
+void drawHeightIndicator() {
+    char buffer[64];
+    sprintf(buffer, "Height: %.0f", playerY_L2);
+    drawText2D(-0.95f, 0.8f, buffer);
+}
+
+void drawGameStatusLevel2() {
+    if (gameState_L2 == GAME_WON) {
+        drawText2D(-0.3f, 0.0f, "Rescue Complete! Dr. Beram Saved!");
+    }
+    else if (gameState_L2 == GAME_LOST) {
+        drawText2D(-0.35f, 0.0f, "Mission Failed!");
+    }
+}
+
+// ===============================
+// Level 2 GLUT Callbacks - Amir's Work
+// ===============================
+
+void displayLevel2() {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    setupCameraLevel2();
+    setupSunLight();
+
+    drawSky();
+    drawNileRiver();
+    drawFlyingCollectibles();
+    drawBirds();
+    drawDrBeram();
+    drawPlayerLevel2();
+
+    drawScoreLevel2();
+    drawTimerLevel2();
+    drawHeightIndicator();
+    drawGameStatusLevel2();
+
+    glutSwapBuffers();
+}
+
+void idleLevel2() {
+    int currentMs = glutGet(GLUT_ELAPSED_TIME);
+    float deltaTime = (currentMs - prevTimeMs_L2) / 1000.0f;
+    prevTimeMs_L2 = currentMs;
+
+    if (gameState_L2 != GAME_PLAYING) {
+        // Still update sunset animation - Amir's Work
+        updateSunset(deltaTime);
+        glutPostRedisplay();
+        return;
+    }
+
+    // Update timer - Amir's Work
+    int elapsed = currentMs - level2StartTimeMs;
+    remainingTime_L2 = level2DurationMs - elapsed;
+    if (remainingTime_L2 <= 0) {
+        remainingTime_L2 = 0;
+        gameState_L2 = GAME_LOST;
+        glutPostRedisplay();
+        return;
+    }
+
+    // Update sunset - Amir's Work
+    updateSunset(deltaTime);
+
+    // Clamp player position - Amir's Work
+    if (playerX_L2 < riverMinX) playerX_L2 = riverMinX;
+    if (playerX_L2 > riverMaxX) playerX_L2 = riverMaxX;
+    if (playerY_L2 < minHeight) playerY_L2 = minHeight;
+    if (playerY_L2 > maxHeight) playerY_L2 = maxHeight;
+
+    // Apply gravity/slight downward drift - Amir's Work
+    playerY_L2 += verticalSpeed * deltaTime;
+    verticalSpeed -= 2.0f * deltaTime; // Gentle downward acceleration
+
+    // Collision detection - Amir's Work
+    AABB_L2 playerBox = getPlayerAABB_L2();
+
+    // Check collectibles - Amir's Work
+    for (int i = 0; i < numFlyingCollectibles; i++) {
+        if (flyingCollectibles[i].active && checkAABBCollision3D(playerBox, flyingCollectibles[i])) {
+            flyingCollectibles[i].active = false;
+            score_L2 += 20; // More points for flying collectibles
+            // TODO: Add collection animation and sound - Amir's Work
+        }
+    }
+
+    // Check birds - Amir's Work
+    for (int i = 0; i < numBirds; i++) {
+        if (birds[i].active && checkAABBCollision3D(playerBox, birds[i])) {
+            handleBirdCollision();
+            birds[i].active = false; // Bird disappears
+            break;
+        }
+    }
+
+    // Check Dr. Beram - Amir's Work
+    if (drBeram.active && checkAABBCollision3D(playerBox, drBeram)) {
+        drBeram.active = false;
+        gameState_L2 = GAME_WON;
+        // TODO: Add rescue animation - Amir's Work
+    }
+
+    // Move birds (simple animation) - Amir's Work
+    for (int i = 0; i < numBirds; i++) {
+        if (birds[i].active) {
+            birds[i].z += 3.0f * deltaTime; // Birds move toward player
+            if (birds[i].z > playerZ_L2 + 50.0f) {
+                // Reset bird behind player - Amir's Work
+                birds[i].z = playerZ_L2 - 200.0f;
+                birds[i].x = randFloat(riverMinX + 10, riverMaxX - 10);
+                birds[i].y = randFloat(20, 35);
+            }
+        }
+    }
+
+    glutPostRedisplay();
+}
+
+void keyboardLevel2(unsigned char key, int x, int y) {
+    if (gameState_L2 != GAME_PLAYING && key != 27) return;
+
+    switch (key) {
+    case 'a': case 'A': // Left - Amir's Work
+        playerX_L2 -= moveStep_L2 * 2.0f;
+        break;
+    case 'd': case 'D': // Right - Amir's Work
+        playerX_L2 += moveStep_L2 * 2.0f;
+        break;
+    case 'w': case 'W': // Forward - Amir's Work
+        playerZ_L2 -= moveStep_L2 * 2.0f;
+        break;
+    case 's': case 'S': // Backward - Amir's Work
+        playerZ_L2 += moveStep_L2;
+        break;
+    case ' ': // Space for up - Amir's Work
+        verticalSpeed = 5.0f;
+        break;
+    case 'c': case 'C': // Down - Amir's Work
+        verticalSpeed = -5.0f;
+        break;
+    case '1': // First person - Amir's Work
+        cameraMode_L2 = FIRST_PERSON;
+        break;
+    case '3': // Third person - Amir's Work
+        cameraMode_L2 = THIRD_PERSON;
+        break;
+    case 27: // ESC - Amir's Work
+        exit(0);
+        break;
+    }
+
+    glutPostRedisplay();
+}
+
+void reshapeLevel2(int w, int h) {
+    if (h == 0) h = 1;
+    float aspect = (float)w / (float)h;
+
+    glViewport(0, 0, w, h);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(60.0, aspect, 1.0, 2000.0); // Larger far plane for flying
+
+    glMatrixMode(GL_MODELVIEW);
+}
+
+void loadModelsLevel2() {
+    // Person B will implement - Amir's Work
+    // playerModel_L2.Load("models/FlyingHero.3ds");
+    // birdModel.Load("models/Bird.3ds");
+    // collectibleModel_L2.Load("models/Flying3ennab.3ds");
+    // drBeramModel.Load("models/DrBeram.3ds");
+}
+
+void initGLLevel2() {
+    srand((unsigned int)time(NULL));
+    glClearColor(0.1f, 0.2f, 0.4f, 1.0f); // Sky blue - Amir's Work
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_NORMALIZE);
+    glShadeModel(GL_SMOOTH);
+
+    setupSunLight();
+    setupLevel2();
+    loadModelsLevel2();
+
+    prevTimeMs_L2 = glutGet(GLUT_ELAPSED_TIME);
+    level2StartTimeMs = prevTimeMs_L2;
+    remainingTime_L2 = level2DurationMs;
+    gameState_L2 = GAME_PLAYING;
+}
+
+#endif // RUN_LEVEL_2 - End of Level 2 code
+
+// ===============================
+// SINGLE MAIN FUNCTION (shared by both levels)
 // ===============================
 
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
     glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
     glutInitWindowSize(800, 600);
+
+#ifdef RUN_LEVEL_2
+    glutCreateWindow("El Ragol El 3ennab . Level 2 (Flying over Nile)");
+    initGLLevel2();
+    glutDisplayFunc(displayLevel2);
+    glutIdleFunc(idleLevel2);
+    glutKeyboardFunc(keyboardLevel2);
+    glutReshapeFunc(reshapeLevel2);
+#else
     glutCreateWindow("El Ragol El 3ennab . Level 1");
-
     initGL();
-
     glutDisplayFunc(display);
     glutIdleFunc(idle);
     glutKeyboardFunc(keyboard);
     glutReshapeFunc(reshape);
+#endif
 
     glutMainLoop();
     return 0;
