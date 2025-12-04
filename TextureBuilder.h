@@ -1,5 +1,7 @@
 #include <stdio.h>
+#ifdef USE_GLEW
 #include "glew.h"
+#endif
 #include "glaux.h"
 
 #pragma comment(lib, "glew32.lib")
