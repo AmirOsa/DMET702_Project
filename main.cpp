@@ -5,7 +5,7 @@
 // ========================
 // CHOOSE WHICH LEVEL TO RUN
 // ========================
-#define RUN_LEVEL_2  // Comment this to run Level 1, uncomment to run Level 2
+//#define RUN_LEVEL_2  // Comment this to run Level 1, uncomment to run Level 2
 // ========================
 
 #pragma warning(disable : 2381)   // ignore 'exit' redefinition from old GLUT vs stdlib
@@ -446,27 +446,31 @@ void drawCheckpoint() {
     glPopMatrix();
 }
 
-void drawLamp() {
-    glPushMatrix();
+void drawLamps() {
+    const float lampX = 10.5f;
+    const float scale = 0.85f;
+    const float lampY = 0.15f;   // lift lamp a bit above the ground
 
-    // Place the lamp post at ground level at the same X,Z as the light base
-    glTranslatef(lampBasePos[0], 0.0f, lampBasePos[2]);
+    for (float z = streetStartZ; z > streetEndZ; z -= 60.0f) {
+        float midZ = z - 30.0f;
 
-    // Lamp pole
-    glPushMatrix();
-    glTranslatef(0.0f, 3.0f, 0.0f);     // center at y = 3
-    glScalef(0.2f, 6.0f, 0.2f);         // tall thin pole
-    glutSolidCube(1.0f);                // placeholder pole
-    glPopMatrix();
+        // LEFT lamp
+        glPushMatrix();
+        glTranslatef(-lampX, lampY, midZ);    // was 0.0f
+        glScalef(scale, scale, scale);
+        lampModel.Draw();
+        glPopMatrix();
 
-    // Lamp head
-    glPushMatrix();
-    glTranslatef(0.0f, 6.5f, 0.0f);     // head above the pole
-    glutSolidSphere(0.5, 16, 16);       // placeholder lamp head
-    glPopMatrix();
-
-    glPopMatrix();
+        // RIGHT lamp
+        glPushMatrix();
+        glTranslatef(lampX, lampY, midZ);     // was 0.0f
+        glRotatef(-180.0f, 0, 1, 0);
+        glScalef(scale, scale, scale);
+        lampModel.Draw();
+        glPopMatrix();
+    }
 }
+
 
 void drawPlayer() {
     glPushMatrix();
@@ -482,33 +486,76 @@ void drawPlayer() {
 
 void applyLampLight() {
     glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
 
-    GLfloat ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
-    GLfloat diffuse[] = { lampIntensity, lampIntensity, lampIntensity, 1.0f };
-    GLfloat specular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    // Enable up to 8 lights
+    for (int i = 0; i < 8; ++i) {
+        glEnable(GL_LIGHT0 + i);
+    }
 
-    glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, specular);
-    // Position will be updated each frame in updateLamp()
+    // Global ambient for the whole scene (dark)
+    GLfloat globalAmbient[] = { 0.05f, 0.05f, 0.05f, 1.0f };
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbient);
+
+    // Warm street-lamp colour
+    GLfloat ambient[]  = { 0.05f, 0.05f, 0.03f, 1.0f };
+    GLfloat diffuse[]  = { 1.2f, 1.2f, 1.0f, 1.0f };   // a bit bright
+    GLfloat specular[] = { 1.0f, 1.0f, 0.9f, 1.0f };
+
+    for (int i = 0; i < 8; ++i) {
+        GLenum L = GL_LIGHT0 + i;
+        glLightfv(L, GL_AMBIENT,  ambient);
+        glLightfv(L, GL_DIFFUSE,  diffuse);
+        glLightfv(L, GL_SPECULAR, specular);
+
+        // Same attenuation for all lamps
+        glLightf(L, GL_CONSTANT_ATTENUATION,  0.5f);
+        glLightf(L, GL_LINEAR_ATTENUATION,    0.02f);
+        glLightf(L, GL_QUADRATIC_ATTENUATION, 0.008f);
+    }
 }
+
 
 void updateLamp(float deltaTime) {
-    // Rotate lamp around a small circle for animation
-    lampRotateAngle += 20.0f * deltaTime;
-    if (lampRotateAngle > 360.0f) lampRotateAngle -= 360.0f;
+    (void)deltaTime; // we don't need it now
 
-    float radius = 2.0f;
-    GLfloat pos[4] = {
-        lampBasePos[0] + radius * cosf(lampRotateAngle * 3.14159f / 180.0f),
-        lampBasePos[1],
-        lampBasePos[2] + radius * sinf(lampRotateAngle * 3.14159f / 180.0f),
-        1.0f
-    };
+    const float lampX      = 10.5f;   // same as in drawLamps()
+    const float lampHeight = 6.0f;    // approximate lamp head height
+    const float spacing    = 60.0f;   // distance between building rows
+    const float offsetZ    = 30.0f;   // lamps are between buildings
 
-    glLightfv(GL_LIGHT0, GL_POSITION, pos);
+    // How far from the player a lamp can be and still get a real light
+    const float lightRangeZ = 180.0f;  // lamps within +/- 180 on Z get lit
+
+    int lightIndex = 0; // 0..7 → GL_LIGHT0..GL_LIGHT7
+
+    for (float z = streetStartZ; z > streetEndZ; z -= spacing) {
+        float midZ = z - offsetZ; // same Z as drawLamps()
+
+        // Only attach lights to lamps near the player
+        if (fabsf(midZ - playerZ) <= lightRangeZ && lightIndex < 8) {
+            // LEFT lamp
+            GLfloat posL[] = { -lampX, lampHeight, midZ, 1.0f };
+            glLightfv(GL_LIGHT0 + lightIndex, GL_POSITION, posL);
+            lightIndex++;
+
+            if (lightIndex >= 8) break;
+
+            // RIGHT lamp
+            GLfloat posR[] = {  lampX, lampHeight, midZ, 1.0f };
+            glLightfv(GL_LIGHT0 + lightIndex, GL_POSITION, posR);
+            lightIndex++;
+            if (lightIndex >= 8) break;
+        }
+    }
+
+    // Any remaining lights that weren't used: move them far away so they don't affect scene
+    for (; lightIndex < 8; ++lightIndex) {
+        GLfloat offPos[] = { 0.0f, 10000.0f, 0.0f, 0.0f }; // directional far away
+        glLightfv(GL_LIGHT0 + lightIndex, GL_POSITION, offPos);
+    }
 }
+
+
 
 // ===============================
 // GLUT callbacks - Level 1
@@ -519,10 +566,11 @@ void display() {
 
     setupCamera();
     applyLampLight();
+    updateLamp(0.0f);
 
     drawStreet();
     drawBuildings();
-    drawLamp();
+    drawLamps();
     drawCars();
     drawTrashCans();
     drawCollectibles();
@@ -543,11 +591,7 @@ void idle() {
     prevTimeMs = currentMs;
 
     // If game is finished, only keep animating visuals if we want, no more logic
-    if (gameState != GAME_PLAYING) {
-        updateLamp(deltaTime);
-        glutPostRedisplay();
-        return;
-    }
+   
 
     // Update remaining time
     int elapsedSinceStart = currentMs - gameStartTimeMs;
@@ -709,6 +753,8 @@ void reshape(int w, int h) {
 // ===============================
 
 void loadModels() {
+    lampModel.Load("models/StreetLamp.3ds");
+
     // Person B: fill correct paths to .3ds files and handle textures
     // Example:
     // playerModel.Load("models/Player.3ds");
@@ -730,6 +776,8 @@ void initGL() {
     glShadeModel(GL_SMOOTH);
 
     applyLampLight();
+    updateLamp(0.0f); 
+
 
     setupLevel1();
     loadModels();
