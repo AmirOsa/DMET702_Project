@@ -82,6 +82,7 @@
 
 #include <math.h>			// Header file for the math library
 #include <gl\gl.h>			// Header file for the OpenGL32 library
+#include <stdio.h>			// For file existence check (fopen)
 
 // The chunk's id numbers
 #define MAIN3DS				0x4D4D
@@ -762,8 +763,20 @@ void Model_3DS::MapNameChunkProcessor(long length, long findex, int matindex)
 	// Load the name and indicate that the material has a texture
 	char fullname[80];
 	sprintf(fullname, "%s%s", path, n.c_str());
-	Materials[matindex].tex.Load(fullname);
-	Materials[matindex].textured = true;
+	
+	// Check if file exists before trying to load it to avoid warnings
+	// Try to open the file to check if it exists
+	FILE* testFile = fopen(fullname, "rb");
+	if (testFile != NULL) {
+		fclose(testFile);
+		// File exists, load the texture
+		Materials[matindex].tex.Load(fullname);
+		Materials[matindex].textured = true;
+	} else {
+		// File doesn't exist, mark as untextured (textures will be loaded manually later)
+		// This prevents the warning from auxDIBImageLoad
+		Materials[matindex].textured = false;
+	}
 
 	// move the file pointer back to where we got it so
 	// that the ProcessChunk() which we interrupted will read

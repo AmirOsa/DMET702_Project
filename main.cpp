@@ -69,8 +69,11 @@ float randRange(float minVal, float maxVal) {
 
 // Collision check (shared)
 bool checkAABBCollision(const AABB& a, const AABB& b) {
-    bool overlapX = fabs(a.x - b.x) <= (a.halfW + b.halfW);
-    bool overlapZ = fabs(a.z - b.z) <= (a.halfD + b.halfD);
+    if (!a.active || !b.active) return false;
+    float dx = fabs(a.x - b.x);
+    float dz = fabs(a.z - b.z);
+    bool overlapX = dx <= (a.halfW + b.halfW);
+    bool overlapZ = dz <= (a.halfD + b.halfD);
     return overlapX && overlapZ;
 }
 
@@ -87,7 +90,13 @@ bool checkAABBCollision(const AABB& a, const AABB& b) {
 float playerX = 0.0f;      // side movement along the street (left/right)
 float playerZ = 0.0f;      // forward movement (runner direction, negative Z)
 float playerY = 0.0f;      // height
+// Collider size (hitbox) for each trash can
+const float TRASH_COLLIDER_HALF_W = 1.2f;   // width (X)
+const float TRASH_COLLIDER_HALF_D = 1.2f;   // depth (Z)
 
+// Offset to align Urn3.3ds mesh with its AABB collider
+const float TRASH_MODEL_OFFSET_X = 0.0f;
+const float TRASH_MODEL_OFFSET_Z = -6.0f;
 // Street boundaries (adjust to match your street width)
 float streetMinX = -10.0f;
 float streetMaxX = 10.0f;
@@ -159,9 +168,19 @@ Model_3DS checkpointModel;
 Model_3DS buildingModel;
 Model_3DS lampModel;
 
+// Ground texture
+GLTexture groundTexture;
+
 // ===============================
 // Helper functions - Level 1 specific
 // ===============================
+// ==== Looping buildings (max 3 per side = 6 total) ====
+const int   NUM_BUILDINGS_PER_SIDE = 3;
+const float BUILDING_SPACING_Z     = 80.0f;  // distance between buildings on Z
+const float BUILDING_RECYCLE_Z     = 40.0f;   // how far behind player before we recycle
+
+float leftBuildingZ [NUM_BUILDINGS_PER_SIDE];
+float rightBuildingZ[NUM_BUILDINGS_PER_SIDE];
 
 AABB getPlayerAABB() {
     AABB p;
@@ -188,7 +207,7 @@ void handleObstacleCollision(const AABB& obstacle) {
     else
         playerX -= sidePush;
 
-    // 4. Clamp inside street after the push
+    // 4. Clamp inside street load the push
     if (playerX < streetMinX) playerX = streetMinX;
     if (playerX > streetMaxX) playerX = streetMaxX;
 }
@@ -206,13 +225,17 @@ void spawnExtraObstacles(int extraCars, int extraTrash) {
         extraCars--;
     }
 
-    // Add extra trash cans
+    // Add extra trash cans in the street where player can reach them
     while (extraTrash > 0 && numTrashCans < MAX_TRASHCANS) {
         AABB& t = trashCans[numTrashCans];
-        t.x = randRange(streetMinX + 1.0f, streetMaxX - 1.0f);
-        t.z = randRange(streetEndZ + 30.0f, -5.0f);
-        t.halfW = 0.8f;
-        t.halfD = 0.8f;
+        // Place in street (inside player boundaries)
+        bool useLeft = (numTrashCans % 2 == 0);
+        t.x = useLeft ? -9.0f : 9.0f;  // Inside street boundaries
+        // Place near buildings (closer to player)
+        // Store collision box at base position
+        t.z = randRange(-50.0f, -10.0f);
+        t.halfW = TRASH_COLLIDER_HALF_W;
+        t.halfD = TRASH_COLLIDER_HALF_D;
         t.active = true;
         numTrashCans++;
         extraTrash--;
@@ -233,10 +256,21 @@ void setupLevel1() {
     checkpointSpawned3s = false;
 
     // ----- Cars -----
-    numCars = 50;  // you can change this up to MAX_CARS
+    numCars = 5;  // you can change this up to MAX_CARS
 
     float carMinZ = streetEndZ + 20.0f; // e.g. -180
-    float carMaxZ = -10.0f;             // closer to player
+    float carMaxZ = -10.0f;    
+    
+        // ==== Init looping buildings ====
+    // Player moves in -Z, so "in front" means more negative Z.
+    float firstZ = playerZ - 40.0f;  // first building row in front
+
+    for (int i = 0; i < NUM_BUILDINGS_PER_SIDE; ++i) {
+        float z = firstZ - i * BUILDING_SPACING_Z;
+        leftBuildingZ[i]  = z;
+        rightBuildingZ[i] = z;
+    }
+// closer to player
 
     for (int i = 0; i < numCars; ++i) {
         cars[i].x = randRange(streetMinX + 2.0f, streetMaxX - 2.0f);
@@ -247,18 +281,41 @@ void setupLevel1() {
     }
 
     // ----- Trash cans -----
-    numTrashCans = 30;  // up to MAX_TRASHCANS
-
-    float trashMinZ = streetEndZ + 30.0f;
-    float trashMaxZ = -5.0f;
-
-    for (int i = 0; i < numTrashCans; ++i) {
-        trashCans[i].x = randRange(streetMinX + 1.0f, streetMaxX - 1.0f);
-        trashCans[i].z = randRange(trashMinZ, trashMaxZ);
-        trashCans[i].halfW = 0.8f;
-        trashCans[i].halfD = 0.8f;
-        trashCans[i].active = true;
+    // Place trash cans in the street where player can collide with them
+    // Buildings are at z positions: streetStartZ, streetStartZ-60, streetStartZ-120, etc.
+    // Place trash cans slightly in front of each building (closer to camera = higher Z)
+    // Position them at the edge of the street so player can reach them
+    const float leftTrashX = -9.0f;   // Inside street boundary (streetMinX = -10.0f)
+    const float rightTrashX = 9.0f;   // Inside street boundary (streetMaxX = 10.0f)
+    const float buildingSpacing = 60.0f;       // Buildings are spaced 60 units apart
+    const float trashOffsetZ = 2.0f;  
+    const float trashSpacing = 40.0f;     
+         // Place trash cans 2 units in front of buildings
+    
+    numTrashCans = 0;
+    
+    for (float z = -30.0f; z > streetEndZ && numTrashCans < MAX_TRASHCANS; z -= trashSpacing) {
+        // Left side trash can
+        if (numTrashCans < MAX_TRASHCANS) {
+            trashCans[numTrashCans].x = leftTrashX;
+            trashCans[numTrashCans].z = z;
+            trashCans[numTrashCans].halfW = TRASH_COLLIDER_HALF_W;
+            trashCans[numTrashCans].halfD = TRASH_COLLIDER_HALF_D;
+            trashCans[numTrashCans].active = true;
+            numTrashCans++;
+        }
+        
+        // Right side trash can
+        if (numTrashCans < MAX_TRASHCANS) {
+            trashCans[numTrashCans].x = rightTrashX;
+            trashCans[numTrashCans].z = z;
+            trashCans[numTrashCans].halfW = TRASH_COLLIDER_HALF_W;
+            trashCans[numTrashCans].halfD = TRASH_COLLIDER_HALF_D;
+            trashCans[numTrashCans].active = true;
+            numTrashCans++;
+        }
     }
+    // Add debug function to see where collision boxes are vs where models are
 
     // ----- Collectibles (3ennabeyat) -----
     numCollectibles = 100;  // up to MAX_COLLECTIBLES
@@ -342,57 +399,88 @@ void drawGameStatus() {
 // ===============================
 
 void drawStreet() {
-    // Simple ground plane . Person B can later add textures
-    glDisable(GL_TEXTURE_2D); // keep it simple for now
+    // Force our own clean state for the ground
+    glDisable(GL_LIGHTING);
+    glEnable(GL_TEXTURE_2D);
 
-    glColor3f(0.2f, 0.2f, 0.2f); // asphalt
+    if (groundTexture.texture[0] != 0) {
+        groundTexture.Use(); // Bind the ground texture
 
-    glBegin(GL_QUADS);
-    glVertex3f(-15.0f, 0.0f, streetStartZ);
-    glVertex3f(15.0f, 0.0f, streetStartZ);
-    glVertex3f(15.0f, 0.0f, streetEndZ);
-    glVertex3f(-15.0f, 0.0f, streetEndZ);
-    glEnd();
+        // Make texture completely control the color (ignore vertex color)
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 
-    // Side sidewalks
-    glColor3f(0.3f, 0.3f, 0.3f);
-    glBegin(GL_QUADS);
-    // left sidewalk
-    glVertex3f(-15.0f, 0.0f, streetStartZ);
-    glVertex3f(-10.0f, 0.0f, streetStartZ);
-    glVertex3f(-10.0f, 0.0f, streetEndZ);
-    glVertex3f(-15.0f, 0.0f, streetEndZ);
-    // right sidewalk
-    glVertex3f(10.0f, 0.0f, streetStartZ);
-    glVertex3f(15.0f, 0.0f, streetStartZ);
-    glVertex3f(15.0f, 0.0f, streetEndZ);
-    glVertex3f(10.0f, 0.0f, streetEndZ);
-    glEnd();
+        const float groundExtentX = 200.0f;
+        const float groundStartZ  = 100.0f;
+        const float groundEndZ    = -1500.0f;
 
-    glColor3f(1, 1, 1); // reset color
-}
+        const float textureTileSize = 10.0f;
 
-void drawBuildings() {
-    glColor3f(0.25f, 0.25f, 0.3f);
+        float startX = -groundExtentX;
+        float endX   =  groundExtentX;
+        float startZ =  groundStartZ;
+        float endZ   =  groundEndZ;
 
-    for (float z = streetStartZ; z > streetEndZ; z -= 60.0f) {
-        // LEFT SIDE BUILDING
-        glPushMatrix();
-        glTranslatef(-12.5f, 5.0f, z);     // Y = 5 because height = ~10
-        glScalef(4.0f, 10.0f, 6.0f);      // width, height, depth
-        glutSolidCube(1.0f);              // cube of size 1 scaled into a real building
-        glPopMatrix();
+        float texStartX = startX / textureTileSize;
+        float texEndX   = endX   / textureTileSize;
+        float texStartZ = startZ / textureTileSize;
+        float texEndZ   = endZ   / textureTileSize;
 
-        // RIGHT SIDE BUILDING
-        glPushMatrix();
-        glTranslatef(12.5f, 5.0f, z);
-        glScalef(4.0f, 10.0f, 6.0f);
-        glutSolidCube(1.0f);
-        glPopMatrix();
+        glBegin(GL_QUADS);
+        glTexCoord2f(texStartX, texStartZ); glVertex3f(startX, 0.0f, startZ);
+        glTexCoord2f(texEndX,   texStartZ); glVertex3f(endX,   0.0f, startZ);
+        glTexCoord2f(texEndX,   texEndZ);   glVertex3f(endX,   0.0f, endZ);
+        glTexCoord2f(texStartX, texEndZ);   glVertex3f(startX, 0.0f, endZ);
+        glEnd();
+    } else {
+        // fallback if texture not loaded
+        glDisable(GL_TEXTURE_2D);
+        glColor3f(0.2f, 0.2f, 0.2f);
+        const float groundExtentX = 200.0f;
+        const float groundStartZ  = 100.0f;
+        const float groundEndZ    = -1500.0f;
+        glBegin(GL_QUADS);
+        glVertex3f(-groundExtentX, 0.0f, groundStartZ);
+        glVertex3f( groundExtentX, 0.0f, groundStartZ);
+        glVertex3f( groundExtentX, 0.0f, groundEndZ);
+        glVertex3f(-groundExtentX, 0.0f, groundEndZ);
+        glEnd();
     }
 
-    glColor3f(1, 1, 1);
+    glDisable(GL_TEXTURE_2D);
+    glEnable(GL_LIGHTING);
 }
+
+
+void drawBuildings() {
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    const float buildingScale = 0.23f;
+    const float leftX   = -30.0f;
+    const float rightX  =  30.0f;
+    const float groundY = 0.0f;
+
+    for (int i = 0; i < NUM_BUILDINGS_PER_SIDE; ++i) {
+        float zL = leftBuildingZ[i];
+        float zR = rightBuildingZ[i];
+
+        // LEFT building
+        glPushMatrix();
+        glTranslatef(leftX, groundY, zL);
+        glScalef(buildingScale, buildingScale, buildingScale);
+        buildingModel.Draw();
+        glPopMatrix();
+
+        // RIGHT building
+        glPushMatrix();
+        glTranslatef(rightX, groundY, zR);
+        glRotatef(180.0f, 0, 1, 0);
+        glScalef(buildingScale, buildingScale, buildingScale);
+        buildingModel.Draw();
+        glPopMatrix();
+    }
+}
+
+
 
 void drawCars() {
     for (int i = 0; i < numCars; i++) {
@@ -400,23 +488,45 @@ void drawCars() {
         if (!c.active) continue;
 
         glPushMatrix();
-        glTranslatef(c.x, 0.0f, c.z);
-        // Person B: adjust scale and orientation to fit car model
-        // glScalef(...);
-        // carModel.Draw();
-        glutSolidCube(4.0); // placeholder visual for testing
+
+        // Position the car on the ground
+        // Y = 0.0f means “place origin at ground level”
+        // If wheels sink, increase Y slightly to 0.3f or 0.5f
+        glTranslatef(c.x, 0.3f, c.z);
+
+        // Rotate car so front faces -Z (adjust as needed)
+        // Uncomment one of these if car is sideways:
+        // glRotatef(90, 0, 1, 0);
+        // glRotatef(-90, 0, 1, 0);
+        // glRotatef(180, 0, 1, 0);
+
+        // Correct scale — much smaller
+        glScalef(0.00015f, 0.00015f, 0.00015f);
+
+
+        // Draw car
+        carModel.Draw();
+
         glPopMatrix();
     }
 }
 
+
 void drawTrashCans() {
+    glEnable(GL_TEXTURE_2D);
+    glEnable(GL_LIGHTING);
+    
     for (int i = 0; i < numTrashCans; i++) {
         const AABB& t = trashCans[i];
         if (!t.active) continue;
 
         glPushMatrix();
+        // Draw trash can DIRECTLY ON THE GROUND (Y = 0)
         glTranslatef(t.x, 0.0f, t.z);
-        glScalef(0.1f, 0.1f, 0.1f); // Scale down the model to fit properly
+        
+        // Small scale for the Urn3.3ds
+        glScalef(0.006f, 0.006f, 0.006f);
+
         trashModel.Draw();
         glPopMatrix();
     }
@@ -447,9 +557,9 @@ void drawCheckpoint() {
 }
 
 void drawLamps() {
-    const float lampX = 10.5f;
-    const float scale = 0.85f;
-    const float lampY = 0.15f;   // lift lamp a bit above the ground
+    const float lampX = 16.0f;  // Increased from 11.0f to 12.0f for more spacing
+    const float scale = 0.95f;
+    const float lampY = -0.5f;   // lift lamp a bit above the ground
 
     for (float z = streetStartZ; z > streetEndZ; z -= 60.0f) {
         float midZ = z - 30.0f;
@@ -475,10 +585,16 @@ void drawLamps() {
 void drawPlayer() {
     glPushMatrix();
     glTranslatef(playerX, playerY, playerZ);
-    // playerModel.Draw(); // Person B
-    glutSolidCube(2.0); // placeholder
+
+    // TEMP: comment out the real model
+    // playerModel.Draw();
+
+    // Debug: draw cube instead
+    glutSolidCube(2.0);
+
     glPopMatrix();
 }
+
 
 // ===============================
 // Lighting - Level 1 specific
@@ -496,10 +612,10 @@ void applyLampLight() {
     GLfloat globalAmbient[] = { 0.05f, 0.05f, 0.05f, 1.0f };
     glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbient);
 
-    // Warm street-lamp colour
-    GLfloat ambient[]  = { 0.05f, 0.05f, 0.03f, 1.0f };
-    GLfloat diffuse[]  = { 1.2f, 1.2f, 1.0f, 1.0f };   // a bit bright
-    GLfloat specular[] = { 1.0f, 1.0f, 0.9f, 1.0f };
+    // Warm street-lamp colour (yellowish/orange tint, not pure white)
+    GLfloat ambient[]  = { 0.1f, 0.08f, 0.05f, 1.0f };   // Warm ambient
+    GLfloat diffuse[]  = { 1.0f, 0.85f, 0.6f, 1.0f };    // Warm yellow/orange light (not white)
+    GLfloat specular[] = { 0.9f, 0.8f, 0.7f, 1.0f };     // Warm specular
 
     for (int i = 0; i < 8; ++i) {
         GLenum L = GL_LIGHT0 + i;
@@ -518,7 +634,7 @@ void applyLampLight() {
 void updateLamp(float deltaTime) {
     (void)deltaTime; // we don't need it now
 
-    const float lampX      = 10.5f;   // same as in drawLamps()
+    const float lampX      = 12.0f;   // same as in drawLamps() - increased spacing
     const float lampHeight = 6.0f;    // approximate lamp head height
     const float spacing    = 60.0f;   // distance between building rows
     const float offsetZ    = 30.0f;   // lamps are between buildings
@@ -554,7 +670,24 @@ void updateLamp(float deltaTime) {
         glLightfv(GL_LIGHT0 + lightIndex, GL_POSITION, offPos);
     }
 }
+void drawTrashCollisionBoxes() {
+    glDisable(GL_LIGHTING);
+    glColor3f(1.0f, 0.0f, 0.0f); // Red wireframes for debugging
+    
+    for (int i = 0; i < numTrashCans; i++) {
+        const AABB& t = trashCans[i];
+        if (!t.active) continue;
 
+        glPushMatrix();
+        // Draw wireframe box at trash can position (ground level)
+        glTranslatef(t.x, 0.5f, t.z);
+        glScalef(t.halfW * 2.0f, 1.0f, t.halfD * 2.0f);
+        glutWireCube(1.0);
+        glPopMatrix();
+    }
+    
+    glEnable(GL_LIGHTING);
+}
 
 
 // ===============================
@@ -573,6 +706,7 @@ void display() {
     drawLamps();
     drawCars();
     drawTrashCans();
+    //drawTrashCollisionBoxes();  
     drawCollectibles();
     drawCheckpoint();
     drawPlayer();
@@ -651,8 +785,42 @@ void idle() {
 
     // Player ↔ obstacles . trash cans
     for (int i = 0; i < numTrashCans; i++) {
-        if (trashCans[i].active && checkAABBCollision(playerBox, trashCans[i])) {
+        if (!trashCans[i].active) continue;
+        
+        // Check collision (collision box is already at the model's position)
+        if (checkAABBCollision(playerBox, trashCans[i])) {
+            // Collision detected - handle it
             handleObstacleCollision(trashCans[i]);
+            
+            // Additional push to prevent player from passing through
+            // Calculate direction from trash can center to player
+            float trashCenterX = trashCans[i].x;
+            float trashCenterZ = trashCans[i].z;
+            float dx = playerX - trashCenterX;
+            float dz = playerZ - trashCenterZ;
+            float distSq = dx * dx + dz * dz;
+            
+            if (distSq > 0.0001f) {  // Avoid division by zero
+                float dist = sqrtf(distSq);
+                // Normalize and push player away from trash can center
+                dx /= dist;
+                dz /= dist;
+                // Push player outside the collision box
+                float pushDistance = (playerBox.halfW + trashCans[i].halfW) + 0.5f;
+                playerX = trashCenterX + dx * pushDistance;
+                playerZ = trashCenterZ + dz * pushDistance;
+            } else {
+                // If player is exactly at trash can center, push in a default direction
+                playerX += 2.0f;
+            }
+            
+            // Clamp player position to stay in street
+            if (playerX < streetMinX) playerX = streetMinX;
+            if (playerX > streetMaxX) playerX = streetMaxX;
+            
+            // Recalculate player box after movement to prevent multiple collisions
+            playerBox = getPlayerAABB();
+            
             // Avoid multiple penalties in the same frame
             break;
         }
@@ -687,8 +855,51 @@ void idle() {
         moveStep = 0.9f;          // even faster
         spawnExtraObstacles(10, 10);
     }
+    for (int i = 0; i < NUM_BUILDINGS_PER_SIDE; ++i) {
+        // LEFT side
+        if (leftBuildingZ[i] > playerZ + BUILDING_RECYCLE_Z) {
+            // find furthest (most negative) left building
+            float minZ = leftBuildingZ[0];
+            for (int j = 1; j < NUM_BUILDINGS_PER_SIDE; ++j) {
+                if (leftBuildingZ[j] < minZ)
+                    minZ = leftBuildingZ[j];
+            }
+            leftBuildingZ[i] = minZ - BUILDING_SPACING_Z;  // put it further ahead
+        }
+
+        // RIGHT side
+        if (rightBuildingZ[i] > playerZ + BUILDING_RECYCLE_Z) {
+            float minZ = rightBuildingZ[0];
+            for (int j = 1; j < NUM_BUILDINGS_PER_SIDE; ++j) {
+                if (rightBuildingZ[j] < minZ)
+                    minZ = rightBuildingZ[j];
+            }
+            rightBuildingZ[i] = minZ - BUILDING_SPACING_Z;
+        }
+    }
+
 
     glutPostRedisplay();
+}
+
+// Helper function to check if a position would collide with trash cans
+bool wouldCollideWithTrashCans(float testX, float testZ) {
+    AABB testBox;
+    testBox.x = testX;
+    testBox.z = testZ;
+    testBox.halfW = 1.0f;  // Player collision box size
+    testBox.halfD = 1.0f;
+    testBox.active = true;
+    
+    for (int i = 0; i < numTrashCans; i++) {
+        if (!trashCans[i].active) continue;
+        
+        // Collision box is already stored at the model's position
+        if (checkAABBCollision(testBox, trashCans[i])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void keyboard(unsigned char key, int x, int y) {
@@ -698,24 +909,44 @@ void keyboard(unsigned char key, int x, int y) {
 
     switch (key) {
     case 'a':
-    case 'A':
-        playerX -= moveStep;
+    case 'A': {
+        float newX = playerX - moveStep;
+        // Only move if new position doesn't collide with trash cans
+        if (!wouldCollideWithTrashCans(newX, playerZ)) {
+            playerX = newX;
+        }
         break;
+    }
 
     case 'd':
-    case 'D':
-        playerX += moveStep;
+    case 'D': {
+        float newX = playerX + moveStep;
+        // Only move if new position doesn't collide with trash cans
+        if (!wouldCollideWithTrashCans(newX, playerZ)) {
+            playerX = newX;
+        }
         break;
+    }
 
     case 'w':
-    case 'W':
-        playerZ -= moveStep;    // move forward along -Z
+    case 'W': {
+        float newZ = playerZ - moveStep;    // move forward along -Z
+        // Only move if new position doesn't collide with trash cans
+        if (!wouldCollideWithTrashCans(playerX, newZ)) {
+            playerZ = newZ;
+        }
         break;
+    }
 
     case 's':
-    case 'S':
-        playerZ += moveStep;    // move backward along +Z
+    case 'S': {
+        float newZ = playerZ + moveStep;    // move backward along +Z
+        // Only move if new position doesn't collide with trash cans
+        if (!wouldCollideWithTrashCans(playerX, newZ)) {
+            playerZ = newZ;
+        }
         break;
+    }
 
         // 1 = first person camera
     case '1':
@@ -755,6 +986,48 @@ void reshape(int w, int h) {
 void loadModels() {
     lampModel.Load("models/StreetLamp.3ds");
     trashModel.Load("models/Urn3.3ds");
+    carModel.Load("models/carKiaPicantoN240910.3ds");
+    playerModel.Load("models/Player.3ds");
+    buildingModel.Load("models/cottage.3ds");
+
+    // Load ground texture
+    char groundTexturePath[256];
+    strcpy_s(groundTexturePath, sizeof(groundTexturePath), "textures/ground1.bmp");
+    groundTexture.Load(groundTexturePath);
+    
+    // Set texture wrapping to repeat so it tiles across the ground
+    // This must be done after loading the texture and OpenGL context is ready
+    if (groundTexture.texture[0] != 0) {
+        glBindTexture(GL_TEXTURE_2D, groundTexture.texture[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+
+    // Apply textures to trash model materials
+    // Load textures from textures directory and apply to model materials
+    if (trashModel.numMaterials > 0) {
+        // Load textures - create mutable strings since GLTexture::Load() modifies them
+        // Using relative paths from the executable's working directory
+        char texturePath1[256];
+        char texturePath2[256];
+        strcpy_s(texturePath1, sizeof(texturePath1), "textures/4_1_9_d.bmp");
+        strcpy_s(texturePath2, sizeof(texturePath2), "textures/ConcrMet.bmp");
+        
+        // Load and apply first texture (4_1_9_d.bmp) to first material
+        // Note: GLTexture::Load() converts path to lowercase internally
+        trashModel.Materials[0].tex.Load(texturePath1);
+        trashModel.Materials[0].textured = true;
+        
+        // Apply second texture (ConcrMet.bmp) to second material if available
+        if (trashModel.numMaterials > 1) {
+            trashModel.Materials[1].tex.Load(texturePath2);
+            trashModel.Materials[1].textured = true;
+        }
+        // If model has only one material, it will use the first texture
+        // Some 3DS models may have multiple objects sharing materials
+    }
 
     // Person B: fill correct paths to .3ds files and handle textures
     // Example:
