@@ -1,9 +1,9 @@
 {
   "Version": 1,
-  "WorkspaceRootPath": "D:\\graphics project\\DMET702_Project\\",
+  "WorkspaceRootPath": "C:\\Users\\DeLL\\Downloads\\gg\\DMET702_Project\\",
   "Documents": [
     {
-      "AbsoluteMoniker": "D:0:0:{2EE1F2C2-040C-46D8-8332-127B746115A6}|OpenGLMeshLoader.vcxproj|D:\\graphics project\\DMET702_Project\\main.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
+      "AbsoluteMoniker": "D:0:0:{2EE1F2C2-040C-46D8-8332-127B746115A6}|OpenGLMeshLoader.vcxproj|C:\\Users\\DeLL\\Downloads\\gg\\DMET702_Project\\main.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}",
       "RelativeMoniker": "D:0:0:{2EE1F2C2-040C-46D8-8332-127B746115A6}|OpenGLMeshLoader.vcxproj|solutionrelative:main.cpp||{D0E1A5C6-B359-4E41-9B60-3365922C2A22}"
     }
   ],
@@ -20,11 +20,11 @@
               "$type": "Document",
               "DocumentIndex": 0,
               "Title": "main.cpp",
-              "DocumentMoniker": "D:\\graphics project\\DMET702_Project\\main.cpp",
+              "DocumentMoniker": "C:\\Users\\DeLL\\Downloads\\gg\\DMET702_Project\\main.cpp",
               "RelativeDocumentMoniker": "main.cpp",
-              "ToolTip": "D:\\graphics project\\DMET702_Project\\main.cpp",
+              "ToolTip": "C:\\Users\\DeLL\\Downloads\\gg\\DMET702_Project\\main.cpp",
               "RelativeToolTip": "main.cpp",
-              "ViewState": "AgIAAGUEAAAAAAAAAAD4v3kEAAAGAAAAAAAAAA==",
+              "ViewState": "AgIAAEgKAAAAAAAAAAAiwFQKAAAdAAAAAAAAAA==",
               "Icon": "ae27a6b0-e345-4288-96df-5eaf394ee369.000677|",
               "WhenOpened": "2025-12-07T01:04:44.495Z",
               "EditorCaption": ""

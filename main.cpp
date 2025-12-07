@@ -263,6 +263,21 @@ int  numTrashCans = 0;
 
 AABB collectibles[MAX_COLLECTIBLES];
 int  numCollectibles = 0;
+// 3ennabeyat animation state
+float collectibleRotateAngle = 0.0f;                  // spinning
+float collectibleScale[MAX_COLLECTIBLES];             // per-collectible scale
+bool  collectibleShrinking[MAX_COLLECTIBLES];         // true when scaling down
+
+// Player spin animation when collecting
+bool  playerSpinning = false;
+float playerSpinAngle = 0.0f;   // current spin angle in degrees
+float playerSpinTime = 0.0f;    // how long we've been spinning (seconds)
+
+// Player hit translation (slide) animation when colliding with obstacles
+bool  playerHitAnimating = false;
+float playerHitTime      = 0.0f;       // seconds since hit
+float playerHitDistance  = 0.0f;       // how far to slide
+
 
 // Checkpoint (No2'et El Tafteesh)
 AABB checkpoint;
@@ -271,6 +286,9 @@ AABB checkpoint;
 GLfloat lampBasePos[4] = { 0.0f, 5.0f, -30.0f, 1.0f }; // base position
 float   lampRotateAngle = 0.0f;  // rotation for animation
 float   lampIntensity = 2.0f;  // light intensity
+float lampAnimTime = 0.0f;   // time accumulator for moving light animation
+
+
 
 // Lighting . street lamp (Level 1)
 
@@ -512,7 +530,7 @@ void setupLevel1() {
     playerZ = 0.0f;
     playerY = 0.0f;
     score = 0;
-    moveStep = 0.5f;
+    moveStep = 1.0f;
     difficultyLevel = 0;
     checkpoint.active = false;
     checkpointSpawned20s = false;
@@ -607,8 +625,8 @@ void setupLevel1() {
     // Add debug function to see where collision boxes are vs where models are
 
     // ----- Collectibles (3ennabeyat) -----
-    numCollectibles = 100;  // up to MAX_COLLECTIBLES
-
+    numCollectibles = 50;  // up to MAX_COLLECTIBLES
+    
     float colMinZ = streetEndZ + 15.0f;
     float colMaxZ = -5.0f;
 
@@ -638,6 +656,16 @@ void setupLevel1() {
 
         // If we fail to place after many tries, this collectible stays inactive
     }
+        // Init collectible animation state
+        for (int i = 0; i < numCollectibles; ++i) {
+            if (collectibles[i].active) {
+                collectibleScale[i] = 1.0f;      // normal size
+            } else {
+                collectibleScale[i] = 0.0f;      // invisible if not placed
+            }
+            collectibleShrinking[i] = false;
+        }
+    
 
 
     // ----- Checkpoint at far end of street -----
@@ -875,29 +903,61 @@ void drawTrashCans() {
 
 
 
+
 void drawCollectibles() {
     for (int i = 0; i < numCollectibles; i++) {
         const AABB& c = collectibles[i];
-        if (!c.active) continue;
+
+        // Skip if invisible and not shrinking
+        if (!c.active && !collectibleShrinking[i])
+            continue;
+
+        // Skip if fully shrunk
+        if (collectibleScale[i] <= 0.0f)
+            continue;
 
         glPushMatrix();
+
+        // Position
         glTranslatef(c.x, 0.5f, c.z);
-        // 3ennabeya model . Person B
-        // collectibleModel.Draw();
-        glutSolidSphere(0.7, 16, 16); // placeholder
+
+        // ❌ REMOVE ANY ROTATION — NO ROTATION AT ALL
+
+        // Scaling (base size * animation scale)
+        float baseScale = 0.5f;      // adjust until size looks good
+        float s = baseScale * collectibleScale[i];
+        glScalef(s, s, s);
+
+        glColor3f(1.0f, 1.0f, 1.0f);
+        collectibleModel.Draw();
+
         glPopMatrix();
     }
 }
+
+
+
+
 
 void drawCheckpoint() {
     if (!checkpoint.active) return;
 
     glPushMatrix();
-    glTranslatef(checkpoint.x, 0.0f, checkpoint.z);
-    // checkpointModel.Draw(); // Person B
-    glutSolidCube(3.0); // placeholder
+
+    // Place at checkpoint position
+    glTranslatef(checkpoint.x, 5.4f, checkpoint.z);
+
+    // Rotate to face the player if needed
+    glRotatef(180.0f, 0, 1, 0);   // you can try removing/changing this if it’s backwards
+
+    // Scale the gate – tweak these numbers until it looks good
+    glScalef(0.18f, 0.1f, 0.1f);   // try 0.05 / 0.2 etc if it's too big/small
+
+    checkpointModel.Draw();
+
     glPopMatrix();
 }
+
 
 void drawLamps() {
     const float lampX = LAMP_X;
@@ -927,16 +987,19 @@ void drawLamps() {
 
 // Simple glowing circles on the ground under each lamp
 void drawLampLightPools() {
-    const float lampX = LAMP_X;
+    const float lampX   = LAMP_X;
     const float spacing = LAMP_SPACING_Z;
     const float offsetZ = LAMP_OFFSET_Z;
 
-    const float radius = 4.0f;
+    const float radius   = 4.0f;
     const int   segments = 20;
 
     glDisable(GL_LIGHTING);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // 🔹 same horizontal translation as the light positions
+    float slideX = sinf(lampAnimTime * 1.5f) * 1.5f;
 
     for (float z = streetStartZ; z > streetEndZ; z -= spacing) {
         float midZ = z - offsetZ;
@@ -944,7 +1007,9 @@ void drawLampLightPools() {
         // Two sides, left and right
         for (int side = -1; side <= 1; side += 2) {
             glPushMatrix();
-            glTranslatef(side * lampX, 0.01f, midZ);
+
+            // ✅ Lamps fixed at ±lampX, but glow moves: ±lampX + slideX
+            glTranslatef(side * lampX + slideX, 0.01f, midZ);
 
             glBegin(GL_TRIANGLE_FAN);
             // center, bright
@@ -970,25 +1035,31 @@ void drawLampLightPools() {
 }
 
 
+
 void drawPlayer() {
     glPushMatrix();
 
-    // put player at same X,Z as the collision box
+    // Base position (x, 0, z)
     glTranslatef(playerX, 0.0f, playerZ);
 
-    // face along -Z (runner direction)
+    // 💥 Slide backward when hit (no jumping)
+    if (playerHitAnimating) {
+        glTranslatef(0.0f, 0.0f, playerHitDistance);  
+    }
+
+    // Face -Z direction
     glRotatef(180.0f, 0, 1, 0);
 
-    // adjust this until size feels right
-    glScalef(1.0f, 1.0f, 1.0f);   // try 0.02, then tweak up/down
+    // Spin when collecting
+    if (playerSpinning) {
+        glRotatef(playerSpinAngle, 0, 1, 0);
+    }
 
-    // use normal lighting & textures
+    glScalef(1.5f, 1.5f, 1.5f);
     playerModel.Draw();
 
     glPopMatrix();
 }
-
-
 
 
 
@@ -1028,16 +1099,19 @@ void applyLampLight() {
 
 
 void updateLamp(float deltaTime) {
-    (void)deltaTime; // we don't need it now
+    // accumulate time for animation
+    lampAnimTime += deltaTime;
 
-    const float lampX = LAMP_X;
+    const float lampX      = LAMP_X;
     const float lampHeight = LAMP_HEIGHT;
-    const float spacing = LAMP_SPACING_Z;
-    const float offsetZ = LAMP_OFFSET_Z;
-
+    const float spacing    = LAMP_SPACING_Z;
+    const float offsetZ    = LAMP_OFFSET_Z;
 
     // How far from the player a lamp can be and still get a real light
     const float lightRangeZ = 180.0f;  // lamps within +/- 180 on Z get lit
+
+    // 🔹 X translation of the LIGHT only (not the models)
+    float slideX = sinf(lampAnimTime * 1.5f) * 1.5f;   // speed & range
 
     int lightIndex = 0; // 0..7 → GL_LIGHT0..GL_LIGHT7
 
@@ -1046,15 +1120,14 @@ void updateLamp(float deltaTime) {
 
         // Only attach lights to lamps near the player
         if (fabsf(midZ - playerZ) <= lightRangeZ && lightIndex < 8) {
-            // LEFT lamp
-            GLfloat posL[] = { -lampX, lampHeight, midZ, 1.0f };
+            // LEFT lamp light (sliding horizontally)
+            GLfloat posL[] = { -lampX + slideX, lampHeight, midZ, 1.0f };
             glLightfv(GL_LIGHT0 + lightIndex, GL_POSITION, posL);
             lightIndex++;
-
             if (lightIndex >= 8) break;
 
-            // RIGHT lamp
-            GLfloat posR[] = { lampX, lampHeight, midZ, 1.0f };
+            // RIGHT lamp light (sliding horizontally)
+            GLfloat posR[] = { lampX + slideX, lampHeight, midZ, 1.0f };
             glLightfv(GL_LIGHT0 + lightIndex, GL_POSITION, posR);
             lightIndex++;
             if (lightIndex >= 8) break;
@@ -1067,6 +1140,7 @@ void updateLamp(float deltaTime) {
         glLightfv(GL_LIGHT0 + lightIndex, GL_POSITION, offPos);
     }
 }
+
 void drawTrashCollisionBoxes() {
     glDisable(GL_LIGHTING);
     glLineWidth(3.0f);
@@ -1120,6 +1194,61 @@ void drawCarCollisionBoxes() {
 
     glEnable(GL_LIGHTING);
 }
+void updateCollectibleAnimations(float deltaTime) {
+    const float shrinkSpeed = 3.0f; // how fast scale goes to 0 per second
+
+    for (int i = 0; i < numCollectibles; ++i) {
+        if (!collectibleShrinking[i]) continue;
+
+        collectibleScale[i] -= shrinkSpeed * deltaTime;
+
+        if (collectibleScale[i] <= 0.0f) {
+            collectibleScale[i] = 0.0f;
+            collectibleShrinking[i] = false;   // done, stop drawing later
+        }
+    }
+
+
+}
+void updatePlayerHit(float deltaTime) {
+    if (!playerHitAnimating) return;
+
+    const float HIT_ANIM_DURATION = 0.25f;   // quick slide
+    playerHitTime += deltaTime;
+
+    // t goes 0 → 1
+    float t = playerHitTime / HIT_ANIM_DURATION;
+    if (t > 1.0f) t = 1.0f;
+
+    // smooth easing: starts fast → slows down
+    float slide = (1.0f - cosf(t * 3.14159f)) * 0.5f;  
+
+    playerHitDistance = slide * 1.2f;    // final slide distance = 1.2 units
+
+    if (playerHitTime >= HIT_ANIM_DURATION) {
+        playerHitAnimating = false;
+        playerHitTime = 0.0f;
+        playerHitDistance = 0.0f;
+    }
+}
+
+void updatePlayerSpin(float deltaTime) {
+    if (!playerSpinning) return;
+
+    const float spinDuration = 0.5f;   // seconds
+    const float spinSpeed    = 720.0f; // degrees per second (2 full spins)
+
+    playerSpinTime  += deltaTime;
+    playerSpinAngle += spinSpeed * deltaTime;
+
+    // stop spinning after duration
+    if (playerSpinTime >= spinDuration) {
+        playerSpinning = false;
+        playerSpinAngle = 0.0f;  // reset angle so player faces forward again
+        playerSpinTime = 0.0f;
+    }
+}
+
 
 
 // ===============================
@@ -1221,6 +1350,10 @@ void idle() {
                 handleObstacleCollision(cars[i]);
                 // Rebuild player box after we moved the player
                 playerBox = getPlayerAABB();
+                // Start slide animation
+               playerHitAnimating = true;
+               playerHitTime = 0.0f;
+               playerHitDistance = 0.0f;
                 break; // only handle one car per frame
             }
         }
@@ -1235,7 +1368,11 @@ void idle() {
 
             if (checkAABBCollision(playerBox, trashBox)) {
                 handleObstacleCollision(trashBox);            // <-- use world-aligned box
-                playerBox = getPlayerAABB();                  // rebuild after bounce
+                playerBox = getPlayerAABB();  
+                // Start slide animation
+                playerHitAnimating = true;
+                playerHitTime = 0.0f;
+                playerHitDistance = 0.0f;                // rebuild after bounce
                 break;
             }
         }
@@ -1243,15 +1380,25 @@ void idle() {
 
 
         // Player ↔ collectibles
-        for (int i = 0; i < numCollectibles; ++i) {
-            if (!collectibles[i].active) continue;
+// Player ↔ collectibles
+for (int i = 0; i < numCollectibles; ++i) {
+    if (!collectibles[i].active) continue;
 
-            if (checkAABBCollision(playerBox, collectibles[i])) {
-                collectibles[i].active = false;
-                score += 10;
-                // TODO: 3ennabeya animation / sound
-            }
-        }
+    if (checkAABBCollision(playerBox, collectibles[i])) {
+        // Stop colliding but start shrink animation
+        collectibles[i].active = false;          // no more collisions
+        collectibleShrinking[i] = true;          // start scaling down
+        score += 10;
+
+        // 💫 trigger player spin animation
+        playerSpinning = true;
+        playerSpinTime = 0.0f;      // restart timer
+        playerSpinAngle = 0.0f;     // start from facing forward
+        // TODO: sound if you want
+    }
+}
+
+
 
         // Player ↔ checkpoint
         if (checkpoint.active && checkAABBCollision(playerBox, checkpoint)) {
@@ -1273,6 +1420,14 @@ void idle() {
             spawnExtraObstacles(10, 10);
         }
     }
+        // 3.6 Update collectible shrinking / rotation animation
+        updateCollectibleAnimations(deltaTime);
+        // Update player spin animation (after collecting)
+updatePlayerSpin(deltaTime);
+// Update player slide animation (after hitting obstacle)
+updatePlayerHit(deltaTime);
+
+
 
     // 4. Recycle buildings (works in both playing & not playing states)
     for (int i = 0; i < NUM_BUILDINGS_PER_SIDE; ++i) {
@@ -1386,6 +1541,8 @@ void loadModels() {
     trashModel.Load("models/Urn3.3ds");
     carModel.Load("models/carKiaPicantoN240910.3ds");
     playerModel.Load("models/Player.3ds");
+    collectibleModel.Load("models/3enabeyat1.3ds");
+    checkpointModel.Load("models/gate.3ds");
     // ===== Player texture =====
     if (playerModel.numMaterials > 0) {
         char playerTexPath[256];
