@@ -112,6 +112,10 @@ const float TRASH_MODEL_OFFSET_Z = 0.0f;
 const float CAR_COLLIDER_HALF_W = 5.15f;  // wider on X (left–right)
 const float CAR_COLLIDER_HALF_D = 4.0f;  // front–back depth (was already 4)
 
+// Player collider size (XZ only)
+const float PLAYER_COLLIDER_HALF_W = 1.2f;  // left–right radius
+const float PLAYER_COLLIDER_HALF_D = 0.2f;  // front–back radius
+
 
 // Street boundaries (adjust to match your street width)
 float streetMinX = -10.0f;
@@ -202,8 +206,8 @@ AABB getPlayerAABB() {
     AABB p;
     p.x = playerX;
     p.z = playerZ;
-    p.halfW = 1.1f;  // approximate player width
-    p.halfD = 1.1f;  // approximate player depth
+    p.halfW = PLAYER_COLLIDER_HALF_W;
+    p.halfD = PLAYER_COLLIDER_HALF_D;
     p.active = true;
     return p;
 }
@@ -220,8 +224,8 @@ bool collidesWithAnyObstacleAt(float testX, float testZ) {
     AABB testBox;
     testBox.x = testX;
     testBox.z = testZ;
-    testBox.halfW = 1.0f;   // same as getPlayerAABB()
-    testBox.halfD = 1.0f;
+    testBox.halfW = PLAYER_COLLIDER_HALF_W;
+    testBox.halfD = PLAYER_COLLIDER_HALF_D;
     testBox.active = true;
 
     // Check against cars
@@ -683,16 +687,24 @@ void drawLamps() {
 
 void drawPlayer() {
     glPushMatrix();
-    glTranslatef(playerX, playerY, playerZ);
 
-    // TEMP: comment out the real model
-     playerModel.Draw();
+    // put player at same X,Z as the collision box
+    glTranslatef(playerX, 0.0f, playerZ);
 
-    // Debug: draw cube instead
-    //glutSolidCube(2.0);
+    // face along -Z (runner direction)
+    glRotatef(180.0f, 0, 1, 0);
+
+    // adjust this until size feels right
+    glScalef(1.0f, 1.0f, 1.0f);   // try 0.02, then tweak up/down
+
+    // use normal lighting & textures
+    playerModel.Draw();
 
     glPopMatrix();
 }
+
+
+
 
 
 // ===============================
@@ -1085,6 +1097,28 @@ void loadModels() {
     trashModel.Load("models/Urn3.3ds");
     carModel.Load("models/carKiaPicantoN240910.3ds");
     playerModel.Load("models/Player.3ds");
+    // ===== Player texture =====
+    if (playerModel.numMaterials > 0) {
+        char playerTexPath[256];
+        // If you saved as BMP:
+        strcpy_s(playerTexPath, sizeof(playerTexPath),
+            "textures/Ch24_1001_Diffuse.bmp");
+        // If you kept PNG, use .png here instead.
+
+        // Apply same diffuse texture to first material
+        playerModel.Materials[0].tex.Load(playerTexPath);
+        playerModel.Materials[0].textured = true;
+
+        // If the model has more materials and looks half-white
+        // you can loop and assign the same texture to all:
+        /*
+        for (int i = 0; i < playerModel.numMaterials; ++i) {
+            playerModel.Materials[i].tex.Load(playerTexPath);
+            playerModel.Materials[i].textured = true;
+        }
+        */
+    }
+
     buildingModel.Load("models/cottage.3ds");
 
     // Load ground texture
