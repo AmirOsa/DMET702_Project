@@ -5,7 +5,7 @@
 // ========================
 // CHOOSE WHICH LEVEL TO RUN
 // ========================
-#define RUN_LEVEL_2  // Comment this to run Level 1, uncomment to run Level 2
+//#define RUN_LEVEL_2  // Comment this to run Level 1, uncomment to run Level 2
 // ========================
 
 #pragma warning(disable : 2381)   // ignore 'exit' redefinition from old GLUT vs stdlib
@@ -38,6 +38,7 @@ struct AABB {
 
 // 2D text rendering for HUD (shared)
 void drawText2D(float x, float y, const char* text) {
+    // Save current matrices
     glMatrixMode(GL_PROJECTION);
     glPushMatrix();
     glLoadIdentity();
@@ -47,7 +48,13 @@ void drawText2D(float x, float y, const char* text) {
     glPushMatrix();
     glLoadIdentity();
 
-    glDisable(GL_LIGHTING); // HUD should not be lit
+    // Draw HUD on top of everything
+    GLboolean depthEnabled;
+    glGetBooleanv(GL_DEPTH_TEST, &depthEnabled);
+    glDisable(GL_DEPTH_TEST);
+
+    glDisable(GL_LIGHTING);
+    glColor3f(1.0f, 1.0f, 1.0f);   // white text
 
     glRasterPos2f(x, y);
     for (int i = 0; text[i] != '\0'; i++) {
@@ -55,12 +62,14 @@ void drawText2D(float x, float y, const char* text) {
     }
 
     glEnable(GL_LIGHTING);
+    if (depthEnabled) glEnable(GL_DEPTH_TEST);
 
-    glPopMatrix();
+    glPopMatrix();                  // modelview
     glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
+    glPopMatrix();                  // projection
     glMatrixMode(GL_MODELVIEW);
 }
+
 
 // Random helper functions (shared)
 float randRange(float minVal, float maxVal) {
@@ -91,12 +100,19 @@ float playerX = 0.0f;      // side movement along the street (left/right)
 float playerZ = 0.0f;      // forward movement (runner direction, negative Z)
 float playerY = 0.0f;      // height
 // Collider size (hitbox) for each trash can
-const float TRASH_COLLIDER_HALF_W = 1.2f;   // width (X)
-const float TRASH_COLLIDER_HALF_D = 1.2f;   // depth (Z)
+// Make the box a bit tighter so it matches the cylinder better
+const float TRASH_COLLIDER_HALF_W = 0.9f;
+const float TRASH_COLLIDER_HALF_D = 0.9f;
 
-// Offset to align Urn3.3ds mesh with its AABB collider
-const float TRASH_MODEL_OFFSET_X = 0.0f;
-const float TRASH_MODEL_OFFSET_Z = -6.0f;
+// model pivot is to the right of the cylinder center → move model left
+const float TRASH_MODEL_OFFSET_X = -6.0f;
+const float TRASH_MODEL_OFFSET_Z = 0.0f;
+
+// Collider size (hitbox) for each car
+const float CAR_COLLIDER_HALF_W = 5.15f;  // wider on X (left–right)
+const float CAR_COLLIDER_HALF_D = 4.0f;  // front–back depth (was already 4)
+
+
 // Street boundaries (adjust to match your street width)
 float streetMinX = -10.0f;
 float streetMaxX = 10.0f;
@@ -186,31 +202,89 @@ AABB getPlayerAABB() {
     AABB p;
     p.x = playerX;
     p.z = playerZ;
-    p.halfW = 1.0f;  // approximate player width
-    p.halfD = 1.0f;  // approximate player depth
+    p.halfW = 1.1f;  // approximate player width
+    p.halfD = 1.1f;  // approximate player depth
     p.active = true;
     return p;
 }
 
+AABB getTrashWorldAABB(const AABB& src) {
+    // collider center IS the logical center in the world
+    return src;
+}
+
+
+
+// Test if a player at (testX, testZ) would collide with any car or trash can
+bool collidesWithAnyObstacleAt(float testX, float testZ) {
+    AABB testBox;
+    testBox.x = testX;
+    testBox.z = testZ;
+    testBox.halfW = 1.0f;   // same as getPlayerAABB()
+    testBox.halfD = 1.0f;
+    testBox.active = true;
+
+    // Check against cars
+    for (int i = 0; i < numCars; ++i) {
+        if (!cars[i].active) continue;
+        if (checkAABBCollision(testBox, cars[i])) {
+            return true;
+        }
+    }
+
+    // Check against trash cans
+    for (int i = 0; i < numTrashCans; ++i) {
+        if (!trashCans[i].active) continue;
+        AABB trashBox = getTrashWorldAABB(trashCans[i]);
+        if (checkAABBCollision(testBox, trashBox)) {
+            return true;
+        }
+    }
+
+    return false;
+}
+
 void handleObstacleCollision(const AABB& obstacle) {
-    // 1. Deduct 10 from score
+    // 1. Score penalty
     score -= 10;
-    if (score < 0) score = 0; // do not go below 0
+    if (score < 0) score = 0;
 
-    // 2. Simple knock-back translation for the player, push slightly backward along +Z
-    playerZ += 2.0f;
+    // 2. Compute overlap between player and obstacle
+    AABB playerBox = getPlayerAABB();
 
-    // 3. Small side push away from the obstacle center
-    float sidePush = 1.0f;
-    if (playerX >= obstacle.x)
-        playerX += sidePush;
-    else
-        playerX -= sidePush;
+    float dx = playerBox.x - obstacle.x;
+    float dz = playerBox.z - obstacle.z;
 
-    // 4. Clamp inside street load the push
+    float overlapX = (playerBox.halfW + obstacle.halfW) - fabsf(dx);
+    float overlapZ = (playerBox.halfD + obstacle.halfD) - fabsf(dz);
+
+    // If for some reason there is no overlap, do nothing
+    if (overlapX <= 0.0f || overlapZ <= 0.0f) {
+        return;
+    }
+
+    // Extra amount to make it look like a bounce, not just unclipping
+    const float bounceExtra = 0.3f;
+
+    if (overlapX < overlapZ) {
+        // Smaller overlap on X, push sideways away from obstacle
+        float dirX = (dx >= 0.0f) ? 1.0f : -1.0f;
+        playerX += dirX * (overlapX + bounceExtra);
+    }
+    else {
+        // Smaller overlap on Z, push along the runner direction
+        float dirZ = (dz >= 0.0f) ? 1.0f : -1.0f;
+        playerZ += dirZ * (overlapZ + bounceExtra);
+    }
+
+    // A tiny extra push backwards along +Z so the black cube clearly bounces back
+    playerZ += 0.5f;
+
+    // 3. Clamp inside street
     if (playerX < streetMinX) playerX = streetMinX;
     if (playerX > streetMaxX) playerX = streetMaxX;
 }
+
 
 void spawnExtraObstacles(int extraCars, int extraTrash) {
     // Add extra cars into any free slots
@@ -218,8 +292,8 @@ void spawnExtraObstacles(int extraCars, int extraTrash) {
         AABB& c = cars[numCars];
         c.x = randRange(streetMinX + 2.0f, streetMaxX - 2.0f);
         c.z = randRange(streetEndZ + 30.0f, -10.0f);
-        c.halfW = 2.0f;
-        c.halfD = 4.0f;
+        c.halfW = CAR_COLLIDER_HALF_W;
+        c.halfD = CAR_COLLIDER_HALF_D;
         c.active = true;
         numCars++;
         extraCars--;
@@ -275,10 +349,11 @@ void setupLevel1() {
     for (int i = 0; i < numCars; ++i) {
         cars[i].x = randRange(streetMinX + 2.0f, streetMaxX - 2.0f);
         cars[i].z = randRange(carMinZ, carMaxZ);
-        cars[i].halfW = 2.0f;
-        cars[i].halfD = 4.0f;
+        cars[i].halfW = CAR_COLLIDER_HALF_W;
+        cars[i].halfD = CAR_COLLIDER_HALF_D;
         cars[i].active = true;
     }
+
 
     // ----- Trash cans -----
     // Place trash cans in the street where player can collide with them
@@ -367,6 +442,25 @@ void setupCamera() {
         );
     }
 }
+
+void debugDrawTrashAtOrigin() {
+    glPushMatrix();
+
+    // collider centre at origin
+    glDisable(GL_LIGHTING);
+    glColor3f(1.0f, 1.0f, 1.0f);     // white cube for collider
+    glutWireCube(1.0f);
+    glEnable(GL_LIGHTING);
+
+    // now draw the model shifted by the offset
+    glTranslatef(TRASH_MODEL_OFFSET_X, 0.0f, TRASH_MODEL_OFFSET_Z);
+    glScalef(0.006f, 0.006f, 0.006f);
+    trashModel.Draw();
+
+    glPopMatrix();
+}
+
+
 
 void drawScore() {
     char buffer[64];
@@ -522,16 +616,20 @@ void drawTrashCans() {
         if (!t.active) continue;
 
         glPushMatrix();
-        // Draw trash can DIRECTLY ON THE GROUND (Y = 0)
-        glTranslatef(t.x, 0.0f, t.z);
-
-        // Small scale for the Urn3.3ds
+        // collider centre is (t.x, t.z) → shift mesh by same offset
+        glTranslatef(t.x + TRASH_MODEL_OFFSET_X,
+            0.0f,
+            t.z + TRASH_MODEL_OFFSET_Z);
         glScalef(0.006f, 0.006f, 0.006f);
-
         trashModel.Draw();
         glPopMatrix();
     }
 }
+
+
+
+
+
 
 void drawCollectibles() {
     for (int i = 0; i < numCollectibles; i++) {
@@ -588,10 +686,10 @@ void drawPlayer() {
     glTranslatef(playerX, playerY, playerZ);
 
     // TEMP: comment out the real model
-    // playerModel.Draw();
+     playerModel.Draw();
 
     // Debug: draw cube instead
-    glutSolidCube(2.0);
+    //glutSolidCube(2.0);
 
     glPopMatrix();
 }
@@ -673,16 +771,51 @@ void updateLamp(float deltaTime) {
 }
 void drawTrashCollisionBoxes() {
     glDisable(GL_LIGHTING);
-    glColor3f(1.0f, 0.0f, 0.0f); // Red wireframes for debugging
+    glLineWidth(3.0f);
+    glColor3f(1.0f, 0.0f, 1.0f); // bright magenta so it's obvious
 
     for (int i = 0; i < numTrashCans; i++) {
-        const AABB& t = trashCans[i];
-        if (!t.active) continue;
+        if (!trashCans[i].active) continue;
+
+        AABB box = getTrashWorldAABB(trashCans[i]);
 
         glPushMatrix();
-        // Draw wireframe box at trash can position (ground level)
-        glTranslatef(t.x, 0.5f, t.z);
-        glScalef(t.halfW * 2.0f, 1.0f, t.halfD * 2.0f);
+        glTranslatef(box.x, 0.5f, box.z);
+        glScalef(box.halfW * 2.0f, 1.0f, box.halfD * 2.0f);
+        glutWireCube(1.0);
+        glPopMatrix();
+    }
+
+    glLineWidth(1.0f);
+    glEnable(GL_LIGHTING);
+}
+
+
+void drawPlayerCollisionBox() {
+    glDisable(GL_LIGHTING);
+    glColor3f(0.0f, 1.0f, 0.0f); // green
+
+    AABB p = getPlayerAABB();
+
+    glPushMatrix();
+    glTranslatef(p.x, 0.5f, p.z);
+    glScalef(p.halfW * 2.0f, 1.0f, p.halfD * 2.0f);
+    glutWireCube(1.0);
+    glPopMatrix();
+
+    glEnable(GL_LIGHTING);
+}
+void drawCarCollisionBoxes() {
+    glDisable(GL_LIGHTING);
+    glColor3f(0.0f, 0.0f, 1.0f); // blue
+
+    for (int i = 0; i < numCars; ++i) {
+        const AABB& c = cars[i];
+        if (!c.active) continue;
+
+        glPushMatrix();
+        glTranslatef(c.x, 0.5f, c.z);
+        glScalef(c.halfW * 2.0f, 1.0f, c.halfD * 2.0f);
         glutWireCube(1.0);
         glPopMatrix();
     }
@@ -707,10 +840,14 @@ void display() {
     drawLamps();
     drawCars();
     drawTrashCans();
-    //drawTrashCollisionBoxes();  
+    //debugDrawTrashAtOrigin();
+    //drawTrashCollisionBoxes();
+    //drawCarCollisionBoxes();
+    drawPlayerCollisionBox();
     drawCollectibles();
     drawCheckpoint();
     drawPlayer();
+
 
     drawScore();
     drawTimer();
@@ -720,153 +857,133 @@ void display() {
 }
 
 void idle() {
-    // Compute current time and delta time
+    // 1. Time and delta time
     int   currentMs = glutGet(GLUT_ELAPSED_TIME);
     float deltaTime = (currentMs - prevTimeMs) / 1000.0f;
     prevTimeMs = currentMs;
 
-    // If game is finished, only keep animating visuals if we want, no more logic
-
-
-    // Update remaining time
-    int elapsedSinceStart = currentMs - gameStartTimeMs;
-    remainingTimeMs = gameDurationMs - elapsedSinceStart;
-    if (remainingTimeMs <= 0) {
-        remainingTimeMs = 0;
-        gameState = GAME_LOST;   // time up
-        glutPostRedisplay();
-        return;
-    }
-
-    // ---------- Checkpoint logic ----------
-
-    // 1st chance . somewhere ahead in last 20 seconds
-    if (!checkpointSpawned20s && remainingTimeMs <= 20000) {
-        checkpoint.x = 0.0f;
-        checkpoint.z = playerZ - 60.0f;   // 60 units ahead of player
-        checkpoint.halfW = 4.0f;
-        checkpoint.halfD = 1.0f;
-        checkpoint.active = true;
-        checkpointSpawned20s = true;
-    }
-
-    // If checkpoint is active and player has passed it without touching it, deactivate it
-    if (checkpoint.active && playerZ < checkpoint.z - 5.0f && gameState == GAME_PLAYING) {
-        checkpoint.active = false;
-    }
-
-    // 2nd chance . last 3 seconds if still not won
-    if (!checkpointSpawned3s && gameState == GAME_PLAYING && remainingTimeMs <= 3000) {
-        checkpoint.x = 0.0f;
-        checkpoint.z = playerZ - 40.0f;   // closer this time
-        checkpoint.halfW = 4.0f;
-        checkpoint.halfD = 1.0f;
-        checkpoint.active = true;
-        checkpointSpawned3s = true;
-    }
-
-    // Clamp player inside street
-    if (playerX < streetMinX) playerX = streetMinX;
-    if (playerX > streetMaxX) playerX = streetMaxX;
-
-    // Update lamp animation and its light position
+    // 2. Always animate lamps (even if game is over)
     updateLamp(deltaTime);
 
-    // Collision checks
-    AABB playerBox = getPlayerAABB();
+    // 3. Game logic only while playing
+    if (gameState == GAME_PLAYING) {
 
-    // Player ↔ obstacles . cars
-    for (int i = 0; i < numCars; i++) {
-        if (cars[i].active && checkAABBCollision(playerBox, cars[i])) {
-            handleObstacleCollision(cars[i]);
-            // Avoid multiple penalties in the same frame
-            break;
+        // 3.1 Timer / time up
+        int elapsedSinceStart = currentMs - gameStartTimeMs;
+        remainingTimeMs = gameDurationMs - elapsedSinceStart;
+
+        if (remainingTimeMs <= 0) {
+            remainingTimeMs = 0;
+            gameState = GAME_LOST;   // time up
+            glutPostRedisplay();
+            return;
         }
-    }
 
-    // Player ↔ obstacles . trash cans
-    for (int i = 0; i < numTrashCans; i++) {
-        if (!trashCans[i].active) continue;
+        // 3.2 Checkpoint logic
 
-        // Check collision (collision box is already at the model's position)
-        if (checkAABBCollision(playerBox, trashCans[i])) {
-            // Collision detected - handle it
-            handleObstacleCollision(trashCans[i]);
+        // First checkpoint . appears in last 20 seconds
+        if (!checkpointSpawned20s && remainingTimeMs <= 20000) {
+            checkpoint.x = 0.0f;
+            checkpoint.z = playerZ - 60.0f;   // 60 units ahead of player
+            checkpoint.halfW = 4.0f;
+            checkpoint.halfD = 1.0f;
+            checkpoint.active = true;
+            checkpointSpawned20s = true;
+        }
 
-            // Additional push to prevent player from passing through
-            // Calculate direction from trash can center to player
-            float trashCenterX = trashCans[i].x;
-            float trashCenterZ = trashCans[i].z;
-            float dx = playerX - trashCenterX;
-            float dz = playerZ - trashCenterZ;
-            float distSq = dx * dx + dz * dz;
+        // If checkpoint is active and player passed it without touching it, disable it
+        if (checkpoint.active && playerZ < checkpoint.z - 5.0f) {
+            checkpoint.active = false;
+        }
 
-            if (distSq > 0.0001f) {  // Avoid division by zero
-                float dist = sqrtf(distSq);
-                // Normalize and push player away from trash can center
-                dx /= dist;
-                dz /= dist;
-                // Push player outside the collision box
-                float pushDistance = (playerBox.halfW + trashCans[i].halfW) + 0.5f;
-                playerX = trashCenterX + dx * pushDistance;
-                playerZ = trashCenterZ + dz * pushDistance;
+        // Second chance . last 3 seconds
+        if (!checkpointSpawned3s && remainingTimeMs <= 3000) {
+            checkpoint.x = 0.0f;
+            checkpoint.z = playerZ - 40.0f;   // closer this time
+            checkpoint.halfW = 4.0f;
+            checkpoint.halfD = 1.0f;
+            checkpoint.active = true;
+            checkpointSpawned3s = true;
+        }
+
+        // 3.3 Clamp player inside street
+        if (playerX < streetMinX) playerX = streetMinX;
+        if (playerX > streetMaxX) playerX = streetMaxX;
+
+        // 3.4 Collision checks
+        AABB playerBox = getPlayerAABB();
+
+        // Player ↔ cars
+        for (int i = 0; i < numCars; ++i) {
+            if (!cars[i].active) continue;
+
+            if (checkAABBCollision(playerBox, cars[i])) {
+                handleObstacleCollision(cars[i]);
+                // Rebuild player box after we moved the player
+                playerBox = getPlayerAABB();
+                break; // only handle one car per frame
             }
-            else {
-                // If player is exactly at trash can center, push in a default direction
-                playerX += 2.0f;
+        }
+
+
+        
+        // Player ↔ trash cans
+        for (int i = 0; i < numTrashCans; ++i) {
+            if (!trashCans[i].active) continue;
+
+            AABB trashBox = getTrashWorldAABB(trashCans[i]);  // <-- apply offset
+
+            if (checkAABBCollision(playerBox, trashBox)) {
+                handleObstacleCollision(trashBox);            // <-- use world-aligned box
+                playerBox = getPlayerAABB();                  // rebuild after bounce
+                break;
             }
+        }
 
-            // Clamp player position to stay in street
-            if (playerX < streetMinX) playerX = streetMinX;
-            if (playerX > streetMaxX) playerX = streetMaxX;
 
-            // Recalculate player box after movement to prevent multiple collisions
-            playerBox = getPlayerAABB();
 
-            // Avoid multiple penalties in the same frame
-            break;
+        // Player ↔ collectibles
+        for (int i = 0; i < numCollectibles; ++i) {
+            if (!collectibles[i].active) continue;
+
+            if (checkAABBCollision(playerBox, collectibles[i])) {
+                collectibles[i].active = false;
+                score += 10;
+                // TODO: 3ennabeya animation / sound
+            }
+        }
+
+        // Player ↔ checkpoint
+        if (checkpoint.active && checkAABBCollision(playerBox, checkpoint)) {
+            checkpoint.active = false;
+            gameState = GAME_WON;
+            // TODO: trigger Level 2
+        }
+
+        // 3.5 Dynamic difficulty
+        if (difficultyLevel == 0 && score >= 50) {
+            difficultyLevel = 1;
+            moveStep = 0.7f;
+            spawnExtraObstacles(5, 5);
+        }
+
+        if (difficultyLevel == 1 && score >= 100) {
+            difficultyLevel = 2;
+            moveStep = 0.9f;
+            spawnExtraObstacles(10, 10);
         }
     }
 
-    // Player ↔ collectibles
-    for (int i = 0; i < numCollectibles; i++) {
-        if (collectibles[i].active && checkAABBCollision(playerBox, collectibles[i])) {
-            collectibles[i].active = false;  // collected logically
-            score += 10;
-            // Person B: trigger 3ennabeya scaling, rotation and sound here
-        }
-    }
-
-    // Player ↔ checkpoint
-    if (checkpoint.active && checkAABBCollision(playerBox, checkpoint)) {
-        checkpoint.active = false;
-        gameState = GAME_WON;
-        // Later: trigger Level 2 here
-        // Example: call a function Level2_Init() when implemented
-    }
-
-    // ----- Dynamic difficulty based on score -----
-    if (difficultyLevel == 0 && score >= 50) {
-        difficultyLevel = 1;
-        moveStep = 0.7f;          // slightly faster movement
-        spawnExtraObstacles(5, 5);       // more cars and trash
-    }
-
-    if (difficultyLevel == 1 && score >= 100) {
-        difficultyLevel = 2;
-        moveStep = 0.9f;          // even faster
-        spawnExtraObstacles(10, 10);
-    }
+    // 4. Recycle buildings (works in both playing & not playing states)
     for (int i = 0; i < NUM_BUILDINGS_PER_SIDE; ++i) {
         // LEFT side
         if (leftBuildingZ[i] > playerZ + BUILDING_RECYCLE_Z) {
-            // find furthest (most negative) left building
             float minZ = leftBuildingZ[0];
             for (int j = 1; j < NUM_BUILDINGS_PER_SIDE; ++j) {
                 if (leftBuildingZ[j] < minZ)
                     minZ = leftBuildingZ[j];
             }
-            leftBuildingZ[i] = minZ - BUILDING_SPACING_Z;  // put it further ahead
+            leftBuildingZ[i] = minZ - BUILDING_SPACING_Z;
         }
 
         // RIGHT side
@@ -880,93 +997,71 @@ void idle() {
         }
     }
 
-
+    // 5. Request redraw
     glutPostRedisplay();
 }
 
-// Helper function to check if a position would collide with trash cans
-bool wouldCollideWithTrashCans(float testX, float testZ) {
-    AABB testBox;
-    testBox.x = testX;
-    testBox.z = testZ;
-    testBox.halfW = 1.0f;  // Player collision box size
-    testBox.halfD = 1.0f;
-    testBox.active = true;
 
-    for (int i = 0; i < numTrashCans; i++) {
-        if (!trashCans[i].active) continue;
 
-        // Collision box is already stored at the model's position
-        if (checkAABBCollision(testBox, trashCans[i])) {
-            return true;
-        }
-    }
-    return false;
-}
 
 void keyboard(unsigned char key, int x, int y) {
     if (gameState != GAME_PLAYING && key != 27) {
         return;
     }
 
+    float newX = playerX;
+    float newZ = playerZ;
+
     switch (key) {
     case 'a':
-    case 'A': {
-        float newX = playerX - moveStep;
-        // Only move if new position doesn't collide with trash cans
-        if (!wouldCollideWithTrashCans(newX, playerZ)) {
-            playerX = newX;
-        }
+    case 'A':
+        newX -= moveStep;
         break;
-    }
 
     case 'd':
-    case 'D': {
-        float newX = playerX + moveStep;
-        // Only move if new position doesn't collide with trash cans
-        if (!wouldCollideWithTrashCans(newX, playerZ)) {
-            playerX = newX;
-        }
+    case 'D':
+        newX += moveStep;
         break;
-    }
 
     case 'w':
-    case 'W': {
-        float newZ = playerZ - moveStep;    // move forward along -Z
-        // Only move if new position doesn't collide with trash cans
-        if (!wouldCollideWithTrashCans(playerX, newZ)) {
-            playerZ = newZ;
-        }
+    case 'W':
+        newZ -= moveStep;    // move forward along -Z
         break;
-    }
 
     case 's':
-    case 'S': {
-        float newZ = playerZ + moveStep;    // move backward along +Z
-        // Only move if new position doesn't collide with trash cans
-        if (!wouldCollideWithTrashCans(playerX, newZ)) {
-            playerZ = newZ;
-        }
+    case 'S':
+        newZ += moveStep;    // move backward along +Z
         break;
-    }
 
-            // 1 = first person camera
     case '1':
         cameraMode = FIRST_PERSON;
-        break;
+        glutPostRedisplay();
+        return;
 
-        // 3 = third person camera
     case '3':
         cameraMode = THIRD_PERSON;
-        break;
+        glutPostRedisplay();
+        return;
 
     case 27: // ESC
         exit(0);
-        break;
+        return;
     }
+
+    // Clamp inside the street only on X
+    if (newX < streetMinX) newX = streetMinX;
+    if (newX > streetMaxX) newX = streetMaxX;
+
+    // Just apply the movement.
+    // Collisions (score change + knock-back) are handled in idle().
+    playerX = newX;
+    playerZ = newZ;
 
     glutPostRedisplay();
 }
+
+
+
 
 void reshape(int w, int h) {
     if (h == 0) h = 1;
