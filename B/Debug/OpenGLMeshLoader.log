@@ -1,0 +1,26 @@
+﻿  GLTexture.cpp
+  Model_3DS.cpp
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\GLTexture.cpp(61,16): warning C4996: '_strlwr': This function or variable may be unsafe. Consider using _strlwr_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\GLTexture.cpp(65,17): warning C4996: 'strtok': This function or variable may be unsafe. Consider using strtok_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\GLTexture.cpp(77,16): warning C4996: '_strlwr': This function or variable may be unsafe. Consider using _strlwr_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\GLTexture.cpp(146,15): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\Model_3DS.cpp(78) : You need to uncomment this if you are using MFC
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\Model_3DS.cpp(183,10): warning C4996: 'strtok': This function or variable may be unsafe. Consider using strtok_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\Model_3DS.cpp(213,11): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\Model_3DS.cpp(765,2): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\Model_3DS.cpp(769,19): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  main.cpp
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(11,27): warning C4616: #pragma warning: warning number '2381' not a valid compiler warning
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(16,9): warning C4005: 'GLUT_DISABLE_ATEXIT_HACK': macro redefinition
+      C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(16,9):
+      'GLUT_DISABLE_ATEXIT_HACK' previously declared on the command line
+  
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(1769,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(1779,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(1785,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(1791,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(1798,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(1815,9): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  Generating Code...
+GLTexture.obj : warning LNK4075: ignoring '/EDITANDCONTINUE' due to '/INCREMENTAL:NO' specification
+  OpenGLMeshLoader.vcxproj -> C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\Debug\B.exe

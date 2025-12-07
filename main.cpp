@@ -1,7 +1,12 @@
 // ===============================
 // DMET 502 . Team El 3ennab
-// Level 1 . Person A (Environment + Mechanics)
 // ===============================
+
+// ========================
+// CHOOSE WHICH LEVEL TO RUN
+// ========================
+#define RUN_LEVEL_2  // Comment this to run Level 1, uncomment to run Level 2
+// ========================
 
 #pragma warning(disable : 2381)   // ignore 'exit' redefinition from old GLUT vs stdlib
 
@@ -17,14 +22,81 @@
 #include <time.h>
 
 // ===============================
-// Global game state
+// SHARED UTILITIES (used by both levels)
+// ===============================
+
+enum CameraMode { FIRST_PERSON, THIRD_PERSON };
+enum GameState { GAME_PLAYING, GAME_WON, GAME_LOST };
+
+// Simple Axis Aligned Bounding Box on XZ plane
+struct AABB {
+    float x, z;   // center position in XZ plane
+    float halfW;  // half width on X
+    float halfD;  // half depth on Z
+    bool  active; // for collectibles and checkpoint
+};
+
+// 2D text rendering for HUD (shared)
+void drawText2D(float x, float y, const char* text) {
+    glMatrixMode(GL_PROJECTION);
+    glPushMatrix();
+    glLoadIdentity();
+    gluOrtho2D(-1, 1, -1, 1);
+
+    glMatrixMode(GL_MODELVIEW);
+    glPushMatrix();
+    glLoadIdentity();
+
+    glDisable(GL_LIGHTING); // HUD should not be lit
+
+    glRasterPos2f(x, y);
+    for (int i = 0; text[i] != '\0'; i++) {
+        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
+    }
+
+    glEnable(GL_LIGHTING);
+
+    glPopMatrix();
+    glMatrixMode(GL_PROJECTION);
+    glPopMatrix();
+    glMatrixMode(GL_MODELVIEW);
+}
+
+// Random helper functions (shared)
+float randRange(float minVal, float maxVal) {
+    return minVal + (maxVal - minVal) * (rand() / (float)RAND_MAX);
+}
+
+// Collision check (shared)
+bool checkAABBCollision(const AABB& a, const AABB& b) {
+    if (!a.active || !b.active) return false;
+    float dx = fabs(a.x - b.x);
+    float dz = fabs(a.z - b.z);
+    bool overlapX = dx <= (a.halfW + b.halfW);
+    bool overlapZ = dz <= (a.halfD + b.halfD);
+    return overlapX && overlapZ;
+}
+
+// ===============================
+// LEVEL 1 CODE (MOHANAD'S WORK - COMPLETE AND UNCHANGED)
+// ===============================
+#ifndef RUN_LEVEL_2
+
+// ===============================
+// Global game state - Level 1
 // ===============================
 
 // Player state
 float playerX = 0.0f;      // side movement along the street (left/right)
 float playerZ = 0.0f;      // forward movement (runner direction, negative Z)
 float playerY = 0.0f;      // height
+// Collider size (hitbox) for each trash can
+const float TRASH_COLLIDER_HALF_W = 1.2f;   // width (X)
+const float TRASH_COLLIDER_HALF_D = 1.2f;   // depth (Z)
 
+// Offset to align Urn3.3ds mesh with its AABB collider
+const float TRASH_MODEL_OFFSET_X = 0.0f;
+const float TRASH_MODEL_OFFSET_Z = -6.0f;
 // Street boundaries (adjust to match your street width)
 float streetMinX = -10.0f;
 float streetMaxX = 10.0f;
@@ -34,7 +106,6 @@ const float streetStartZ = 5.0f;      // near camera
 const float streetEndZ = -1000.0f;  // far end
 
 // Camera
-enum CameraMode { FIRST_PERSON, THIRD_PERSON };
 CameraMode cameraMode = THIRD_PERSON;
 
 // Camera parameters
@@ -44,14 +115,6 @@ float thirdPersonHeight = 4.0f; // how high camera is above player
 
 // Score
 int score = 0;
-
-// Simple Axis Aligned Bounding Box on XZ plane
-struct AABB {
-    float x, z;   // center position in XZ plane
-    float halfW;  // half width on X
-    float halfD;  // half depth on Z
-    bool  active; // for collectibles and checkpoint
-};
 
 // Limits
 const int MAX_CARS = 50;
@@ -88,11 +151,7 @@ int difficultyLevel = 0;
 bool checkpointSpawned20s = false;
 bool checkpointSpawned3s = false;
 
-// ===============================
 // Game state and timer
-// ===============================
-
-enum GameState { GAME_PLAYING, GAME_WON, GAME_LOST };
 GameState gameState = GAME_PLAYING;
 
 // Timer, 60 seconds for Level 1
@@ -100,10 +159,7 @@ const int gameDurationMs = 60000;   // 60 * 1000
 int       gameStartTimeMs = 0;      // when level started in ms
 int       remainingTimeMs = 60000;  // remaining time in ms
 
-// ===============================
 // Models . Person B will fill paths and textures
-// ===============================
-
 Model_3DS playerModel;
 Model_3DS carModel;
 Model_3DS trashModel;
@@ -112,15 +168,19 @@ Model_3DS checkpointModel;
 Model_3DS buildingModel;
 Model_3DS lampModel;
 
-// ===============================
-// Helper functions
-// ===============================
+// Ground texture
+GLTexture groundTexture;
 
-bool checkAABBCollision(const AABB& a, const AABB& b) {
-    bool overlapX = fabs(a.x - b.x) <= (a.halfW + b.halfW);
-    bool overlapZ = fabs(a.z - b.z) <= (a.halfD + b.halfD);
-    return overlapX && overlapZ;
-}
+// ===============================
+// Helper functions - Level 1 specific
+// ===============================
+// ==== Looping buildings (max 3 per side = 6 total) ====
+const int   NUM_BUILDINGS_PER_SIDE = 3;
+const float BUILDING_SPACING_Z = 80.0f;  // distance between buildings on Z
+const float BUILDING_RECYCLE_Z = 40.0f;   // how far behind player before we recycle
+
+float leftBuildingZ[NUM_BUILDINGS_PER_SIDE];
+float rightBuildingZ[NUM_BUILDINGS_PER_SIDE];
 
 AABB getPlayerAABB() {
     AABB p;
@@ -147,13 +207,9 @@ void handleObstacleCollision(const AABB& obstacle) {
     else
         playerX -= sidePush;
 
-    // 4. Clamp inside street after the push
+    // 4. Clamp inside street load the push
     if (playerX < streetMinX) playerX = streetMinX;
     if (playerX > streetMaxX) playerX = streetMaxX;
-}
-
-float randRange(float minVal, float maxVal) {
-    return minVal + (maxVal - minVal) * (rand() / (float)RAND_MAX);
 }
 
 void spawnExtraObstacles(int extraCars, int extraTrash) {
@@ -169,13 +225,17 @@ void spawnExtraObstacles(int extraCars, int extraTrash) {
         extraCars--;
     }
 
-    // Add extra trash cans
+    // Add extra trash cans in the street where player can reach them
     while (extraTrash > 0 && numTrashCans < MAX_TRASHCANS) {
         AABB& t = trashCans[numTrashCans];
-        t.x = randRange(streetMinX + 1.0f, streetMaxX - 1.0f);
-        t.z = randRange(streetEndZ + 30.0f, -5.0f);
-        t.halfW = 0.8f;
-        t.halfD = 0.8f;
+        // Place in street (inside player boundaries)
+        bool useLeft = (numTrashCans % 2 == 0);
+        t.x = useLeft ? -9.0f : 9.0f;  // Inside street boundaries
+        // Place near buildings (closer to player)
+        // Store collision box at base position
+        t.z = randRange(-50.0f, -10.0f);
+        t.halfW = TRASH_COLLIDER_HALF_W;
+        t.halfD = TRASH_COLLIDER_HALF_D;
         t.active = true;
         numTrashCans++;
         extraTrash--;
@@ -196,10 +256,21 @@ void setupLevel1() {
     checkpointSpawned3s = false;
 
     // ----- Cars -----
-    numCars = 50;  // you can change this up to MAX_CARS
+    numCars = 5;  // you can change this up to MAX_CARS
 
     float carMinZ = streetEndZ + 20.0f; // e.g. -180
-    float carMaxZ = -10.0f;             // closer to player
+    float carMaxZ = -10.0f;
+
+    // ==== Init looping buildings ====
+// Player moves in -Z, so "in front" means more negative Z.
+    float firstZ = playerZ - 40.0f;  // first building row in front
+
+    for (int i = 0; i < NUM_BUILDINGS_PER_SIDE; ++i) {
+        float z = firstZ - i * BUILDING_SPACING_Z;
+        leftBuildingZ[i] = z;
+        rightBuildingZ[i] = z;
+    }
+    // closer to player
 
     for (int i = 0; i < numCars; ++i) {
         cars[i].x = randRange(streetMinX + 2.0f, streetMaxX - 2.0f);
@@ -210,18 +281,41 @@ void setupLevel1() {
     }
 
     // ----- Trash cans -----
-    numTrashCans = 30;  // up to MAX_TRASHCANS
+    // Place trash cans in the street where player can collide with them
+    // Buildings are at z positions: streetStartZ, streetStartZ-60, streetStartZ-120, etc.
+    // Place trash cans slightly in front of each building (closer to camera = higher Z)
+    // Position them at the edge of the street so player can reach them
+    const float leftTrashX = -9.0f;   // Inside street boundary (streetMinX = -10.0f)
+    const float rightTrashX = 9.0f;   // Inside street boundary (streetMaxX = 10.0f)
+    const float buildingSpacing = 60.0f;       // Buildings are spaced 60 units apart
+    const float trashOffsetZ = 2.0f;
+    const float trashSpacing = 40.0f;
+    // Place trash cans 2 units in front of buildings
 
-    float trashMinZ = streetEndZ + 30.0f;
-    float trashMaxZ = -5.0f;
+    numTrashCans = 0;
 
-    for (int i = 0; i < numTrashCans; ++i) {
-        trashCans[i].x = randRange(streetMinX + 1.0f, streetMaxX - 1.0f);
-        trashCans[i].z = randRange(trashMinZ, trashMaxZ);
-        trashCans[i].halfW = 0.8f;
-        trashCans[i].halfD = 0.8f;
-        trashCans[i].active = true;
+    for (float z = -30.0f; z > streetEndZ && numTrashCans < MAX_TRASHCANS; z -= trashSpacing) {
+        // Left side trash can
+        if (numTrashCans < MAX_TRASHCANS) {
+            trashCans[numTrashCans].x = leftTrashX;
+            trashCans[numTrashCans].z = z;
+            trashCans[numTrashCans].halfW = TRASH_COLLIDER_HALF_W;
+            trashCans[numTrashCans].halfD = TRASH_COLLIDER_HALF_D;
+            trashCans[numTrashCans].active = true;
+            numTrashCans++;
+        }
+
+        // Right side trash can
+        if (numTrashCans < MAX_TRASHCANS) {
+            trashCans[numTrashCans].x = rightTrashX;
+            trashCans[numTrashCans].z = z;
+            trashCans[numTrashCans].halfW = TRASH_COLLIDER_HALF_W;
+            trashCans[numTrashCans].halfD = TRASH_COLLIDER_HALF_D;
+            trashCans[numTrashCans].active = true;
+            numTrashCans++;
+        }
     }
+    // Add debug function to see where collision boxes are vs where models are
 
     // ----- Collectibles (3ennabeyat) -----
     numCollectibles = 100;  // up to MAX_COLLECTIBLES
@@ -274,32 +368,6 @@ void setupCamera() {
     }
 }
 
-// 2D text rendering for HUD
-void drawText2D(float x, float y, const char* text) {
-    glMatrixMode(GL_PROJECTION);
-    glPushMatrix();
-    glLoadIdentity();
-    gluOrtho2D(-1, 1, -1, 1);
-
-    glMatrixMode(GL_MODELVIEW);
-    glPushMatrix();
-    glLoadIdentity();
-
-    glDisable(GL_LIGHTING); // HUD should not be lit
-
-    glRasterPos2f(x, y);
-    for (int i = 0; text[i] != '\0'; i++) {
-        glutBitmapCharacter(GLUT_BITMAP_HELVETICA_18, text[i]);
-    }
-
-    glEnable(GL_LIGHTING);
-
-    glPopMatrix();
-    glMatrixMode(GL_PROJECTION);
-    glPopMatrix();
-    glMatrixMode(GL_MODELVIEW);
-}
-
 void drawScore() {
     char buffer[64];
     sprintf(buffer, "Score: %d", score);
@@ -331,57 +399,89 @@ void drawGameStatus() {
 // ===============================
 
 void drawStreet() {
-    // Simple ground plane . Person B can later add textures
-    glDisable(GL_TEXTURE_2D); // keep it simple for now
+    // Force our own clean state for the ground
+    glDisable(GL_LIGHTING);
+    glEnable(GL_TEXTURE_2D);
 
-    glColor3f(0.2f, 0.2f, 0.2f); // asphalt
+    if (groundTexture.texture[0] != 0) {
+        groundTexture.Use(); // Bind the ground texture
 
-    glBegin(GL_QUADS);
-    glVertex3f(-15.0f, 0.0f, streetStartZ);
-    glVertex3f(15.0f, 0.0f, streetStartZ);
-    glVertex3f(15.0f, 0.0f, streetEndZ);
-    glVertex3f(-15.0f, 0.0f, streetEndZ);
-    glEnd();
+        // Make texture completely control the color (ignore vertex color)
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_REPLACE);
 
-    // Side sidewalks
-    glColor3f(0.3f, 0.3f, 0.3f);
-    glBegin(GL_QUADS);
-    // left sidewalk
-    glVertex3f(-15.0f, 0.0f, streetStartZ);
-    glVertex3f(-10.0f, 0.0f, streetStartZ);
-    glVertex3f(-10.0f, 0.0f, streetEndZ);
-    glVertex3f(-15.0f, 0.0f, streetEndZ);
-    // right sidewalk
-    glVertex3f(10.0f, 0.0f, streetStartZ);
-    glVertex3f(15.0f, 0.0f, streetStartZ);
-    glVertex3f(15.0f, 0.0f, streetEndZ);
-    glVertex3f(10.0f, 0.0f, streetEndZ);
-    glEnd();
+        const float groundExtentX = 200.0f;
+        const float groundStartZ = 100.0f;
+        const float groundEndZ = -1500.0f;
 
-    glColor3f(1, 1, 1); // reset color
-}
+        const float textureTileSize = 10.0f;
 
-void drawBuildings() {
-    glColor3f(0.25f, 0.25f, 0.3f);
+        float startX = -groundExtentX;
+        float endX = groundExtentX;
+        float startZ = groundStartZ;
+        float endZ = groundEndZ;
 
-    for (float z = streetStartZ; z > streetEndZ; z -= 60.0f) {
-        // LEFT SIDE BUILDING
-        glPushMatrix();
-        glTranslatef(-12.5f, 5.0f, z);     // Y = 5 because height = ~10
-        glScalef(4.0f, 10.0f, 6.0f);      // width, height, depth
-        glutSolidCube(1.0f);              // cube of size 1 scaled into a real building
-        glPopMatrix();
+        float texStartX = startX / textureTileSize;
+        float texEndX = endX / textureTileSize;
+        float texStartZ = startZ / textureTileSize;
+        float texEndZ = endZ / textureTileSize;
 
-        // RIGHT SIDE BUILDING
-        glPushMatrix();
-        glTranslatef(12.5f, 5.0f, z);
-        glScalef(4.0f, 10.0f, 6.0f);
-        glutSolidCube(1.0f);
-        glPopMatrix();
+        glBegin(GL_QUADS);
+        glTexCoord2f(texStartX, texStartZ); glVertex3f(startX, 0.0f, startZ);
+        glTexCoord2f(texEndX, texStartZ); glVertex3f(endX, 0.0f, startZ);
+        glTexCoord2f(texEndX, texEndZ);   glVertex3f(endX, 0.0f, endZ);
+        glTexCoord2f(texStartX, texEndZ);   glVertex3f(startX, 0.0f, endZ);
+        glEnd();
+    }
+    else {
+        // fallback if texture not loaded
+        glDisable(GL_TEXTURE_2D);
+        glColor3f(0.2f, 0.2f, 0.2f);
+        const float groundExtentX = 200.0f;
+        const float groundStartZ = 100.0f;
+        const float groundEndZ = -1500.0f;
+        glBegin(GL_QUADS);
+        glVertex3f(-groundExtentX, 0.0f, groundStartZ);
+        glVertex3f(groundExtentX, 0.0f, groundStartZ);
+        glVertex3f(groundExtentX, 0.0f, groundEndZ);
+        glVertex3f(-groundExtentX, 0.0f, groundEndZ);
+        glEnd();
     }
 
-    glColor3f(1, 1, 1);
+    glDisable(GL_TEXTURE_2D);
+    glEnable(GL_LIGHTING);
 }
+
+
+void drawBuildings() {
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    const float buildingScale = 0.23f;
+    const float leftX = -30.0f;
+    const float rightX = 30.0f;
+    const float groundY = 0.0f;
+
+    for (int i = 0; i < NUM_BUILDINGS_PER_SIDE; ++i) {
+        float zL = leftBuildingZ[i];
+        float zR = rightBuildingZ[i];
+
+        // LEFT building
+        glPushMatrix();
+        glTranslatef(leftX, groundY, zL);
+        glScalef(buildingScale, buildingScale, buildingScale);
+        buildingModel.Draw();
+        glPopMatrix();
+
+        // RIGHT building
+        glPushMatrix();
+        glTranslatef(rightX, groundY, zR);
+        glRotatef(180.0f, 0, 1, 0);
+        glScalef(buildingScale, buildingScale, buildingScale);
+        buildingModel.Draw();
+        glPopMatrix();
+    }
+}
+
+
 
 void drawCars() {
     for (int i = 0; i < numCars; i++) {
@@ -389,24 +489,46 @@ void drawCars() {
         if (!c.active) continue;
 
         glPushMatrix();
-        glTranslatef(c.x, 0.0f, c.z);
-        // Person B: adjust scale and orientation to fit car model
-        // glScalef(...);
-        // carModel.Draw();
-        glutSolidCube(4.0); // placeholder visual for testing
+
+        // Position the car on the ground
+        // Y = 0.0f means “place origin at ground level”
+        // If wheels sink, increase Y slightly to 0.3f or 0.5f
+        glTranslatef(c.x, 0.3f, c.z);
+
+        // Rotate car so front faces -Z (adjust as needed)
+        // Uncomment one of these if car is sideways:
+        // glRotatef(90, 0, 1, 0);
+        // glRotatef(-90, 0, 1, 0);
+        // glRotatef(180, 0, 1, 0);
+
+        // Correct scale — much smaller
+        glScalef(0.00015f, 0.00015f, 0.00015f);
+
+
+        // Draw car
+        carModel.Draw();
+
         glPopMatrix();
     }
 }
 
+
 void drawTrashCans() {
+    glEnable(GL_TEXTURE_2D);
+    glEnable(GL_LIGHTING);
+
     for (int i = 0; i < numTrashCans; i++) {
         const AABB& t = trashCans[i];
         if (!t.active) continue;
 
         glPushMatrix();
+        // Draw trash can DIRECTLY ON THE GROUND (Y = 0)
         glTranslatef(t.x, 0.0f, t.z);
-        // trashModel.Draw(); // Person B
-        glutSolidCube(1.5); // placeholder
+
+        // Small scale for the Urn3.3ds
+        glScalef(0.006f, 0.006f, 0.006f);
+
+        trashModel.Draw();
         glPopMatrix();
     }
 }
@@ -435,72 +557,142 @@ void drawCheckpoint() {
     glPopMatrix();
 }
 
-void drawLamp() {
-    glPushMatrix();
+void drawLamps() {
+    const float lampX = 16.0f;  // Increased from 11.0f to 12.0f for more spacing
+    const float scale = 0.95f;
+    const float lampY = -0.5f;   // lift lamp a bit above the ground
 
-    // Place the lamp post at ground level at the same X,Z as the light base
-    glTranslatef(lampBasePos[0], 0.0f, lampBasePos[2]);
+    for (float z = streetStartZ; z > streetEndZ; z -= 60.0f) {
+        float midZ = z - 30.0f;
 
-    // Lamp pole
-    glPushMatrix();
-    glTranslatef(0.0f, 3.0f, 0.0f);     // center at y = 3
-    glScalef(0.2f, 6.0f, 0.2f);         // tall thin pole
-    glutSolidCube(1.0f);                // placeholder pole
-    glPopMatrix();
+        // LEFT lamp
+        glPushMatrix();
+        glTranslatef(-lampX, lampY, midZ);    // was 0.0f
+        glScalef(scale, scale, scale);
+        lampModel.Draw();
+        glPopMatrix();
 
-    // Lamp head
-    glPushMatrix();
-    glTranslatef(0.0f, 6.5f, 0.0f);     // head above the pole
-    glutSolidSphere(0.5, 16, 16);       // placeholder lamp head
-    glPopMatrix();
-
-    glPopMatrix();
+        // RIGHT lamp
+        glPushMatrix();
+        glTranslatef(lampX, lampY, midZ);     // was 0.0f
+        glRotatef(-180.0f, 0, 1, 0);
+        glScalef(scale, scale, scale);
+        lampModel.Draw();
+        glPopMatrix();
+    }
 }
+
 
 void drawPlayer() {
     glPushMatrix();
     glTranslatef(playerX, playerY, playerZ);
-    // playerModel.Draw(); // Person B
-    glutSolidCube(2.0); // placeholder
+
+    // TEMP: comment out the real model
+    // playerModel.Draw();
+
+    // Debug: draw cube instead
+    glutSolidCube(2.0);
+
     glPopMatrix();
 }
 
+
 // ===============================
-// Lighting
+// Lighting - Level 1 specific
 // ===============================
 
 void applyLampLight() {
     glEnable(GL_LIGHTING);
-    glEnable(GL_LIGHT0);
 
-    GLfloat ambient[] = { 0.2f, 0.2f, 0.2f, 1.0f };
-    GLfloat diffuse[] = { lampIntensity, lampIntensity, lampIntensity, 1.0f };
-    GLfloat specular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    // Enable up to 8 lights
+    for (int i = 0; i < 8; ++i) {
+        glEnable(GL_LIGHT0 + i);
+    }
 
-    glLightfv(GL_LIGHT0, GL_AMBIENT, ambient);
-    glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse);
-    glLightfv(GL_LIGHT0, GL_SPECULAR, specular);
-    // Position will be updated each frame in updateLamp()
+    // Global ambient for the whole scene (dark)
+    GLfloat globalAmbient[] = { 0.05f, 0.05f, 0.05f, 1.0f };
+    glLightModelfv(GL_LIGHT_MODEL_AMBIENT, globalAmbient);
+
+    // Warm street-lamp colour (yellowish/orange tint, not pure white)
+    GLfloat ambient[] = { 0.1f, 0.08f, 0.05f, 1.0f };   // Warm ambient
+    GLfloat diffuse[] = { 1.0f, 0.85f, 0.6f, 1.0f };    // Warm yellow/orange light (not white)
+    GLfloat specular[] = { 0.9f, 0.8f, 0.7f, 1.0f };     // Warm specular
+
+    for (int i = 0; i < 8; ++i) {
+        GLenum L = GL_LIGHT0 + i;
+        glLightfv(L, GL_AMBIENT, ambient);
+        glLightfv(L, GL_DIFFUSE, diffuse);
+        glLightfv(L, GL_SPECULAR, specular);
+
+        // Same attenuation for all lamps
+        glLightf(L, GL_CONSTANT_ATTENUATION, 0.5f);
+        glLightf(L, GL_LINEAR_ATTENUATION, 0.02f);
+        glLightf(L, GL_QUADRATIC_ATTENUATION, 0.008f);
+    }
 }
+
 
 void updateLamp(float deltaTime) {
-    // Rotate lamp around a small circle for animation
-    lampRotateAngle += 20.0f * deltaTime;
-    if (lampRotateAngle > 360.0f) lampRotateAngle -= 360.0f;
+    (void)deltaTime; // we don't need it now
 
-    float radius = 2.0f;
-    GLfloat pos[4] = {
-        lampBasePos[0] + radius * cosf(lampRotateAngle * 3.14159f / 180.0f),
-        lampBasePos[1],
-        lampBasePos[2] + radius * sinf(lampRotateAngle * 3.14159f / 180.0f),
-        1.0f
-    };
+    const float lampX = 12.0f;   // same as in drawLamps() - increased spacing
+    const float lampHeight = 6.0f;    // approximate lamp head height
+    const float spacing = 60.0f;   // distance between building rows
+    const float offsetZ = 30.0f;   // lamps are between buildings
 
-    glLightfv(GL_LIGHT0, GL_POSITION, pos);
+    // How far from the player a lamp can be and still get a real light
+    const float lightRangeZ = 180.0f;  // lamps within +/- 180 on Z get lit
+
+    int lightIndex = 0; // 0..7 → GL_LIGHT0..GL_LIGHT7
+
+    for (float z = streetStartZ; z > streetEndZ; z -= spacing) {
+        float midZ = z - offsetZ; // same Z as drawLamps()
+
+        // Only attach lights to lamps near the player
+        if (fabsf(midZ - playerZ) <= lightRangeZ && lightIndex < 8) {
+            // LEFT lamp
+            GLfloat posL[] = { -lampX, lampHeight, midZ, 1.0f };
+            glLightfv(GL_LIGHT0 + lightIndex, GL_POSITION, posL);
+            lightIndex++;
+
+            if (lightIndex >= 8) break;
+
+            // RIGHT lamp
+            GLfloat posR[] = { lampX, lampHeight, midZ, 1.0f };
+            glLightfv(GL_LIGHT0 + lightIndex, GL_POSITION, posR);
+            lightIndex++;
+            if (lightIndex >= 8) break;
+        }
+    }
+
+    // Any remaining lights that weren't used: move them far away so they don't affect scene
+    for (; lightIndex < 8; ++lightIndex) {
+        GLfloat offPos[] = { 0.0f, 10000.0f, 0.0f, 0.0f }; // directional far away
+        glLightfv(GL_LIGHT0 + lightIndex, GL_POSITION, offPos);
+    }
+}
+void drawTrashCollisionBoxes() {
+    glDisable(GL_LIGHTING);
+    glColor3f(1.0f, 0.0f, 0.0f); // Red wireframes for debugging
+
+    for (int i = 0; i < numTrashCans; i++) {
+        const AABB& t = trashCans[i];
+        if (!t.active) continue;
+
+        glPushMatrix();
+        // Draw wireframe box at trash can position (ground level)
+        glTranslatef(t.x, 0.5f, t.z);
+        glScalef(t.halfW * 2.0f, 1.0f, t.halfD * 2.0f);
+        glutWireCube(1.0);
+        glPopMatrix();
+    }
+
+    glEnable(GL_LIGHTING);
 }
 
+
 // ===============================
-// GLUT callbacks
+// GLUT callbacks - Level 1
 // ===============================
 
 void display() {
@@ -508,12 +700,14 @@ void display() {
 
     setupCamera();
     applyLampLight();
+    updateLamp(0.0f);
 
     drawStreet();
     drawBuildings();
-    drawLamp();
+    drawLamps();
     drawCars();
     drawTrashCans();
+    //drawTrashCollisionBoxes();  
     drawCollectibles();
     drawCheckpoint();
     drawPlayer();
@@ -532,11 +726,7 @@ void idle() {
     prevTimeMs = currentMs;
 
     // If game is finished, only keep animating visuals if we want, no more logic
-    if (gameState != GAME_PLAYING) {
-        updateLamp(deltaTime);
-        glutPostRedisplay();
-        return;
-    }
+
 
     // Update remaining time
     int elapsedSinceStart = currentMs - gameStartTimeMs;
@@ -596,8 +786,43 @@ void idle() {
 
     // Player ↔ obstacles . trash cans
     for (int i = 0; i < numTrashCans; i++) {
-        if (trashCans[i].active && checkAABBCollision(playerBox, trashCans[i])) {
+        if (!trashCans[i].active) continue;
+
+        // Check collision (collision box is already at the model's position)
+        if (checkAABBCollision(playerBox, trashCans[i])) {
+            // Collision detected - handle it
             handleObstacleCollision(trashCans[i]);
+
+            // Additional push to prevent player from passing through
+            // Calculate direction from trash can center to player
+            float trashCenterX = trashCans[i].x;
+            float trashCenterZ = trashCans[i].z;
+            float dx = playerX - trashCenterX;
+            float dz = playerZ - trashCenterZ;
+            float distSq = dx * dx + dz * dz;
+
+            if (distSq > 0.0001f) {  // Avoid division by zero
+                float dist = sqrtf(distSq);
+                // Normalize and push player away from trash can center
+                dx /= dist;
+                dz /= dist;
+                // Push player outside the collision box
+                float pushDistance = (playerBox.halfW + trashCans[i].halfW) + 0.5f;
+                playerX = trashCenterX + dx * pushDistance;
+                playerZ = trashCenterZ + dz * pushDistance;
+            }
+            else {
+                // If player is exactly at trash can center, push in a default direction
+                playerX += 2.0f;
+            }
+
+            // Clamp player position to stay in street
+            if (playerX < streetMinX) playerX = streetMinX;
+            if (playerX > streetMaxX) playerX = streetMaxX;
+
+            // Recalculate player box after movement to prevent multiple collisions
+            playerBox = getPlayerAABB();
+
             // Avoid multiple penalties in the same frame
             break;
         }
@@ -632,8 +857,51 @@ void idle() {
         moveStep = 0.9f;          // even faster
         spawnExtraObstacles(10, 10);
     }
+    for (int i = 0; i < NUM_BUILDINGS_PER_SIDE; ++i) {
+        // LEFT side
+        if (leftBuildingZ[i] > playerZ + BUILDING_RECYCLE_Z) {
+            // find furthest (most negative) left building
+            float minZ = leftBuildingZ[0];
+            for (int j = 1; j < NUM_BUILDINGS_PER_SIDE; ++j) {
+                if (leftBuildingZ[j] < minZ)
+                    minZ = leftBuildingZ[j];
+            }
+            leftBuildingZ[i] = minZ - BUILDING_SPACING_Z;  // put it further ahead
+        }
+
+        // RIGHT side
+        if (rightBuildingZ[i] > playerZ + BUILDING_RECYCLE_Z) {
+            float minZ = rightBuildingZ[0];
+            for (int j = 1; j < NUM_BUILDINGS_PER_SIDE; ++j) {
+                if (rightBuildingZ[j] < minZ)
+                    minZ = rightBuildingZ[j];
+            }
+            rightBuildingZ[i] = minZ - BUILDING_SPACING_Z;
+        }
+    }
+
 
     glutPostRedisplay();
+}
+
+// Helper function to check if a position would collide with trash cans
+bool wouldCollideWithTrashCans(float testX, float testZ) {
+    AABB testBox;
+    testBox.x = testX;
+    testBox.z = testZ;
+    testBox.halfW = 1.0f;  // Player collision box size
+    testBox.halfD = 1.0f;
+    testBox.active = true;
+
+    for (int i = 0; i < numTrashCans; i++) {
+        if (!trashCans[i].active) continue;
+
+        // Collision box is already stored at the model's position
+        if (checkAABBCollision(testBox, trashCans[i])) {
+            return true;
+        }
+    }
+    return false;
 }
 
 void keyboard(unsigned char key, int x, int y) {
@@ -643,26 +911,46 @@ void keyboard(unsigned char key, int x, int y) {
 
     switch (key) {
     case 'a':
-    case 'A':
-        playerX -= moveStep;
+    case 'A': {
+        float newX = playerX - moveStep;
+        // Only move if new position doesn't collide with trash cans
+        if (!wouldCollideWithTrashCans(newX, playerZ)) {
+            playerX = newX;
+        }
         break;
+    }
 
     case 'd':
-    case 'D':
-        playerX += moveStep;
+    case 'D': {
+        float newX = playerX + moveStep;
+        // Only move if new position doesn't collide with trash cans
+        if (!wouldCollideWithTrashCans(newX, playerZ)) {
+            playerX = newX;
+        }
         break;
+    }
 
     case 'w':
-    case 'W':
-        playerZ -= moveStep;    // move forward along -Z
+    case 'W': {
+        float newZ = playerZ - moveStep;    // move forward along -Z
+        // Only move if new position doesn't collide with trash cans
+        if (!wouldCollideWithTrashCans(playerX, newZ)) {
+            playerZ = newZ;
+        }
         break;
+    }
 
     case 's':
-    case 'S':
-        playerZ += moveStep;    // move backward along +Z
+    case 'S': {
+        float newZ = playerZ + moveStep;    // move backward along +Z
+        // Only move if new position doesn't collide with trash cans
+        if (!wouldCollideWithTrashCans(playerX, newZ)) {
+            playerZ = newZ;
+        }
         break;
+    }
 
-        // 1 = first person camera
+            // 1 = first person camera
     case '1':
         cameraMode = FIRST_PERSON;
         break;
@@ -694,19 +982,62 @@ void reshape(int w, int h) {
 }
 
 // ===============================
-// Initialization
+// Initialization - Level 1
 // ===============================
 
 void loadModels() {
+    lampModel.Load("models/StreetLamp.3ds");
+    trashModel.Load("models/Urn3.3ds");
+    carModel.Load("models/carKiaPicantoN240910.3ds");
+    playerModel.Load("models/Player.3ds");
+    buildingModel.Load("models/cottage.3ds");
+
+    // Load ground texture
+    char groundTexturePath[256];
+    strcpy_s(groundTexturePath, sizeof(groundTexturePath), "textures/ground1.bmp");
+    groundTexture.Load(groundTexturePath);
+
+    // Set texture wrapping to repeat so it tiles across the ground
+    // This must be done after loading the texture and OpenGL context is ready
+    if (groundTexture.texture[0] != 0) {
+        glBindTexture(GL_TEXTURE_2D, groundTexture.texture[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+
+    // Apply textures to trash model materials
+    // Load textures from textures directory and apply to model materials
+    if (trashModel.numMaterials > 0) {
+        // Load textures - create mutable strings since GLTexture::Load() modifies them
+        // Using relative paths from the executable's working directory
+        char texturePath1[256];
+        char texturePath2[256];
+        strcpy_s(texturePath1, sizeof(texturePath1), "textures/4_1_9_d.bmp");
+        strcpy_s(texturePath2, sizeof(texturePath2), "textures/ConcrMet.bmp");
+
+        // Load and apply first texture (4_1_9_d.bmp) to first material
+        // Note: GLTexture::Load() converts path to lowercase internally
+        trashModel.Materials[0].tex.Load(texturePath1);
+        trashModel.Materials[0].textured = true;
+
+        // Apply second texture (ConcrMet.bmp) to second material if available
+        if (trashModel.numMaterials > 1) {
+            trashModel.Materials[1].tex.Load(texturePath2);
+            trashModel.Materials[1].textured = true;
+        }
+        // If model has only one material, it will use the first texture
+        // Some 3DS models may have multiple objects sharing materials
+    }
+
     // Person B: fill correct paths to .3ds files and handle textures
     // Example:
     // playerModel.Load("models/Player.3ds");
     // carModel.Load("models/Car.3ds");
-    // trashModel.Load("models/TrashCan.3ds");
     // collectibleModel.Load("models/3ennabeya.3ds");
     // checkpointModel.Load("models/Checkpoint.3ds");
     // buildingModel.Load("models/Building.3ds");
-    // lampModel.Load("models/Lamp.3ds");
 }
 
 void initGL() {
@@ -719,6 +1050,8 @@ void initGL() {
     glShadeModel(GL_SMOOTH);
 
     applyLampLight();
+    updateLamp(0.0f);
+
 
     setupLevel1();
     loadModels();
@@ -729,22 +1062,1137 @@ void initGL() {
     gameState = GAME_PLAYING;
 }
 
+#endif // RUN_LEVEL_2 - End of Level 1 code
+
+// ===================================================================
+// LEVEL 2 CODE STARTS HERE - Amir's Work (FIXED)
+// ===================================================================
+#ifdef RUN_LEVEL_2
+
 // ===============================
-// main
+// Level 2 Specific Structures
+// ===============================
+
+// Level 2 AABB with Y coordinate for flying
+struct AABB_L2 {
+    float x, y, z;   // 3D position
+    float halfW, halfD, halfH; // 3D dimensions
+    bool active;
+};
+
+// ===============================
+// Level 2 Global Variables
+// ===============================
+
+// Player state for flying
+float playerX_L2 = 0.0f;      // side movement
+float playerY_L2 = 25.0f;     // flying height (Y-axis)
+float playerZ_L2 = 0.0f;      // forward movement (flying direction, negative Z)
+float playerSpeed_L2 = 15.0f; // Forward speed
+
+// Flying boundaries
+const float riverWidth = 100.0f;
+const float riverMinX = -riverWidth / 2;
+const float riverMaxX = riverWidth / 2;
+const float minHeight = 10.0f;
+const float maxHeight = 50.0f;
+const float riverStartZ = 100.0f;   // Start point
+const float riverEndZ = -1500.0f;   // End point
+
+// Camera
+CameraMode cameraMode_L2 = THIRD_PERSON;
+float thirdPersonDist_L2 = 15.0f;  // Camera distance behind player
+float thirdPersonHeight_L2 = 8.0f; // Camera height above player
+
+// Score
+int score_L2 = 0;
+
+// Flying collectibles (3ennabeyat)
+const int MAX_FLYING_COLLECTIBLES = 50;
+AABB_L2 flyingCollectibles[MAX_FLYING_COLLECTIBLES];
+int numFlyingCollectibles = 0;
+
+// Obstacles (birds)
+const int MAX_BIRDS = 15;
+AABB_L2 birds[MAX_BIRDS];
+int numBirds = 0;
+
+// Target (Dr. Beram)
+AABB_L2 drBeram;
+bool drBeramRescued = false;
+float rescueAnimationTime = 0.0f;
+
+// Lighting for sunset
+float sunColor[3] = { 1.0f, 0.9f, 0.0f }; // Yellow (start)
+float sunsetProgress = 0.0f; // 0.0 = start, 1.0 = sunset complete
+bool sunsetActive = true;
+
+// Time and movement
+int prevTimeMs_L2 = 0;
+float moveStep_L2 = 4.0f; // Horizontal movement speed
+float verticalSpeed = 0.0f; // For up/down movement
+float liftForce = 15.0f;   // Upward force when ascending
+
+// Game state
+GameState gameState_L2 = GAME_PLAYING;
+const int level2DurationMs = 120000; // 120 seconds for flying level
+int level2StartTimeMs = 0;
+int remainingTime_L2 = level2DurationMs;
+
+// Models - Use placeholders since 3DS files don't exist
+// Model_3DS playerModel_L2; // Comment out - using glut placeholders
+// Model_3DS birdModel;
+// Model_3DS collectibleModel_L2;
+// Model_3DS drBeramModel;
+
+// Animation states
+float collectibleRotation = 0.0f;
+float birdFlapAnimation = 0.0f;
+float heroWingFlap = 0.0f;
+
+// Collectible collection animation
+struct CollectibleAnim {
+    int index;
+    float scale;
+    float rotation;
+    float alpha;
+    bool active;
+};
+const int MAX_ANIM_COLLECTIBLES = 10;
+CollectibleAnim collectibleAnimations[MAX_ANIM_COLLECTIBLES];
+
+// Model loading flags
+bool modelsLoaded = false;
+
+// Sky texture - ADDED
+GLTexture skyTexture;
+
+// ===============================
+// Level 2 Key State Tracking (NEW)
+// ===============================
+bool keyStates[256] = { false }; // Track all key states
+
+// ===============================
+// Level 2 Helper Functions
+// ===============================
+
+// Check collision in 3D
+bool checkAABBCollision3D(const AABB_L2& a, const AABB_L2& b) {
+    if (!a.active || !b.active) return false;
+
+    bool overlapX = fabs(a.x - b.x) <= (a.halfW + b.halfW);
+    bool overlapY = fabs(a.y - b.y) <= (a.halfH + b.halfH);
+    bool overlapZ = fabs(a.z - b.z) <= (a.halfD + b.halfD);
+    return overlapX && overlapY && overlapZ;
+}
+
+// Get player's 3D bounding box
+AABB_L2 getPlayerAABB_L2() {
+    AABB_L2 p;
+    p.x = playerX_L2;
+    p.y = playerY_L2;
+    p.z = playerZ_L2;
+    p.halfW = 2.0f;   // Player width
+    p.halfH = 2.0f;   // Player height
+    p.halfD = 3.0f;   // Player depth
+    p.active = true;
+    return p;
+}
+
+// Handle collision with bird
+void handleBirdCollision(int birdIndex) {
+    // Deduct points
+    score_L2 -= 15;
+    if (score_L2 < 0) score_L2 = 0;
+
+    // Push back and down
+    playerZ_L2 += 10.0f;
+    playerY_L2 -= 5.0f;
+    verticalSpeed = 0.0f; // Strong downward push
+
+    // Deactivate bird
+    birds[birdIndex].active = false;
+
+    // Clamp position
+    if (playerY_L2 < minHeight) playerY_L2 = minHeight;
+    if (playerY_L2 > maxHeight) playerY_L2 = maxHeight;
+}
+
+// Add collectible animation
+void addCollectibleAnimation(int index, float x, float y, float z) {
+    for (int i = 0; i < MAX_ANIM_COLLECTIBLES; i++) {
+        if (!collectibleAnimations[i].active) {
+            collectibleAnimations[i].active = true;
+            collectibleAnimations[i].scale = 1.0f;
+            collectibleAnimations[i].rotation = 0.0f;
+            collectibleAnimations[i].alpha = 1.0f;
+            collectibleAnimations[i].index = index;
+            break;
+        }
+    }
+}
+
+// Setup Level 2 - Flying over Nile
+void setupLevel2() {
+    // Reset player
+    playerX_L2 = 0.0f;
+    playerY_L2 = 25.0f;
+    playerZ_L2 = riverStartZ;
+    playerSpeed_L2 = 20.0f;
+    score_L2 = 0;
+    sunsetProgress = 0.0f;
+    sunsetActive = true;
+    drBeramRescued = false;
+    rescueAnimationTime = 0.0f;
+
+    // Reset sunset color to yellow
+    sunColor[0] = 1.0f; // Red
+    sunColor[1] = 0.9f; // Green
+    sunColor[2] = 0.0f; // Blue
+
+    // Clear animations
+    for (int i = 0; i < MAX_ANIM_COLLECTIBLES; i++) {
+        collectibleAnimations[i].active = false;
+    }
+
+    // Setup flying collectibles (3ennabeyat)
+    numFlyingCollectibles = 40;
+    for (int i = 0; i < numFlyingCollectibles; i++) {
+        flyingCollectibles[i].x = randRange(riverMinX + 5, riverMaxX - 5);
+        flyingCollectibles[i].y = randRange(15, 40); // Different heights
+        flyingCollectibles[i].z = riverStartZ - 50.0f - (i * 35.0f); // Spread along Z
+        flyingCollectibles[i].halfW = 1.5f;
+        flyingCollectibles[i].halfH = 1.5f;
+        flyingCollectibles[i].halfD = 1.5f;
+        flyingCollectibles[i].active = true;
+    }
+
+    // Setup birds (obstacles)
+    numBirds = 12;
+    for (int i = 0; i < numBirds; i++) {
+        birds[i].x = randRange(riverMinX + 10, riverMaxX - 10);
+        birds[i].y = randRange(20, 35);
+        birds[i].z = riverStartZ - 80.0f - (i * 60.0f);
+        birds[i].halfW = 3.0f;
+        birds[i].halfH = 2.0f;
+        birds[i].halfD = 4.0f;
+        birds[i].active = true;
+    }
+
+    // Setup Dr. Beram (target) - at the end of the river
+    drBeram.x = 0.0f;
+    drBeram.y = 30.0f;
+    drBeram.z = riverEndZ + 50.0f; // Near the end
+    drBeram.halfW = 3.0f;
+    drBeram.halfH = 4.0f;
+    drBeram.halfD = 2.0f;
+    drBeram.active = true;
+}
+
+// Camera for flying level - FIXED to properly follow player
+void setupCameraLevel2() {
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
+
+    if (cameraMode_L2 == FIRST_PERSON) {
+        // First person: from player's viewpoint
+        gluLookAt(
+            playerX_L2, playerY_L2 + 2.0f, playerZ_L2,        // Eye position
+            playerX_L2, playerY_L2 + 2.0f, playerZ_L2 - 50.0f, // Look at point ahead
+            0, 1, 0                                          // Up vector
+        );
+    }
+    else { // THIRD_PERSON
+        // Third person: behind and above, always looking at player
+        float camX = playerX_L2;
+        float camY = playerY_L2 + thirdPersonHeight_L2;
+        float camZ = playerZ_L2 + thirdPersonDist_L2;
+
+        // Look at point slightly ahead of player for better view
+        float lookAtX = playerX_L2;
+        float lookAtY = playerY_L2 + 2.0f;
+        float lookAtZ = playerZ_L2 - 10.0f;
+
+        gluLookAt(
+            camX, camY, camZ,        // Camera position (behind and above)
+            lookAtX, lookAtY, lookAtZ, // Look at player
+            0, 1, 0                  // Up vector
+        );
+    }
+}
+
+// Draw sky with sunset gradient and texture - UPDATED for front screen only
+void drawSky() {
+    glDisable(GL_LIGHTING);
+
+    // Use the sky texture if loaded
+    if (skyTexture.texture[0] != 0) {
+        glEnable(GL_TEXTURE_2D);
+        skyTexture.Use(); // Bind the sky texture
+
+        // Use modulate to blend texture with sunset colors
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+        // Apply sunset tint (more orange/red as sunset progresses)
+        glColor4f(1.0f,
+            1.0f - sunsetProgress * 0.5f,  // Less green
+            1.0f - sunsetProgress * 0.7f,  // Less blue
+            1.0f);
+    }
+    else {
+        // Fallback to solid color gradient if texture not loaded
+        glDisable(GL_TEXTURE_2D);
+
+        // Simple gradient front screen
+        glBegin(GL_QUADS);
+        // Bottom-left (horizon - orange)
+        glColor3f(0.8f + sunsetProgress * 0.2f,
+            0.3f + sunsetProgress * 0.4f,
+            0.1f);
+        glVertex3f(-1500, 0, -2500);
+
+        // Bottom-right
+        glColor3f(0.8f + sunsetProgress * 0.2f,
+            0.3f + sunsetProgress * 0.4f,
+            0.1f);
+        glVertex3f(1500, 0, -2500);
+
+        // Top-right (sky - blue/orange)
+        glColor3f(0.1f,
+            0.2f + sunsetProgress * 0.3f,
+            0.8f - sunsetProgress * 0.7f);
+        glVertex3f(1500, 800, -2500);
+
+        // Top-left
+        glColor3f(0.1f,
+            0.2f + sunsetProgress * 0.3f,
+            0.8f - sunsetProgress * 0.7f);
+        glVertex3f(-1500, 800, -2500);
+        glEnd();
+
+        glEnable(GL_LIGHTING);
+        return;
+    }
+
+    // Draw a large front screen (billboard) far in the distance
+    // This creates a "skybox front" effect
+    float screenWidth = 2000.0f;   // Very wide
+    float screenHeight = 800.0f;   // Very tall
+    float screenDepth = -2500.0f;  // Far away
+
+    glBegin(GL_QUADS);
+
+    // Bottom-left corner (near horizon)
+    // Texture coordinates: bottom of texture at horizon
+    glTexCoord2f(0.0f, 0.7f);
+    glVertex3f(-screenWidth, 0, screenDepth);
+
+    // Bottom-right corner
+    glTexCoord2f(1.0f, 0.7f);
+    glVertex3f(screenWidth, 0, screenDepth);
+
+    // Top-right corner (sky)
+    // Texture coordinates: top of texture at top of screen
+    glTexCoord2f(1.0f, 0.0f);
+    glVertex3f(screenWidth, screenHeight, screenDepth);
+
+    // Top-left corner
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex3f(-screenWidth, screenHeight, screenDepth);
+
+    glEnd();
+
+    // Draw sun on the front screen (as part of the sky texture enhancement)
+    if (sunsetProgress < 0.8f) {
+        glDisable(GL_TEXTURE_2D);
+
+        // Sun position based on sunset progress
+        float sunSize = 25.0f - sunsetProgress * 12.0f;
+        float sunY = 400.0f - sunsetProgress * 300.0f; // Sun goes down
+        float sunX = 500.0f - sunsetProgress * 400.0f; // Sun moves left
+
+        // Draw sun as a glowing sphere
+        glPushMatrix();
+        glTranslatef(sunX, sunY, screenDepth + 5.0f); // Slightly in front of sky
+
+        // Main sun disc
+        glColor3f(sunColor[0], sunColor[1], sunColor[2]);
+        glutSolidSphere(sunSize, 32, 32);
+
+        // Sun glow/halo (larger, semi-transparent)
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glColor4f(sunColor[0], sunColor[1], sunColor[2], 0.3f);
+        glutSolidSphere(sunSize * 1.5f, 24, 24);
+        glDisable(GL_BLEND);
+
+        glPopMatrix();
+    }
+
+    glDisable(GL_TEXTURE_2D);
+    glEnable(GL_LIGHTING);
+}
+
+// Draw Nile River with texture - IMPROVED
+void drawNileRiver() {
+    glEnable(GL_TEXTURE_2D);
+    glDisable(GL_LIGHTING);
+
+    // River water color with sunset reflection
+    glColor3f(0.1f, 0.3f + sunsetProgress * 0.3f, 0.6f);
+
+    glBegin(GL_QUADS);
+    // River surface
+    glVertex3f(-200, 0, riverEndZ);
+    glVertex3f(200, 0, riverEndZ);
+    glVertex3f(200, 0, riverStartZ + 100);
+    glVertex3f(-200, 0, riverStartZ + 100);
+    glEnd();
+
+    // River banks
+    glColor3f(0.5f, 0.4f, 0.2f);
+    glBegin(GL_QUADS);
+    // Left bank
+    glVertex3f(-250, 0, riverEndZ);
+    glVertex3f(-200, 0, riverEndZ);
+    glVertex3f(-200, 0, riverStartZ + 100);
+    glVertex3f(-250, 0, riverStartZ + 100);
+    // Right bank
+    glVertex3f(200, 0, riverEndZ);
+    glVertex3f(250, 0, riverEndZ);
+    glVertex3f(250, 0, riverStartZ + 100);
+    glVertex3f(200, 0, riverStartZ + 100);
+    glEnd();
+
+    glEnable(GL_LIGHTING);
+    glDisable(GL_TEXTURE_2D);
+}
+
+// Draw flying collectibles (3ennabeyat) with animation
+void drawFlyingCollectibles() {
+    collectibleRotation += 2.0f;
+    if (collectibleRotation > 360.0f) collectibleRotation -= 360.0f;
+
+    glColor3f(1.0f, 0.0f, 0.0f); // Red for 3ennab
+    glEnable(GL_COLOR_MATERIAL);
+
+    for (int i = 0; i < numFlyingCollectibles; i++) {
+        if (!flyingCollectibles[i].active) continue;
+
+        glPushMatrix();
+        glTranslatef(flyingCollectibles[i].x,
+            flyingCollectibles[i].y,
+            flyingCollectibles[i].z);
+
+        // Rotating animation
+        glRotatef(collectibleRotation, 0, 1, 0);
+
+        // Draw as a shiny red gem
+        glutSolidSphere(2.0, 16, 16);
+
+        // Add a glow effect
+        glDisable(GL_LIGHTING);
+        glColor4f(1.0f, 0.3f, 0.3f, 0.5f);
+        glutSolidSphere(2.5, 12, 12);
+        glEnable(GL_LIGHTING);
+
+        glPopMatrix();
+    }
+
+    // Draw collection animations
+    glDisable(GL_LIGHTING);
+    for (int i = 0; i < MAX_ANIM_COLLECTIBLES; i++) {
+        if (collectibleAnimations[i].active) {
+            int idx = collectibleAnimations[i].index;
+            if (idx >= 0 && idx < numFlyingCollectibles) {
+                glPushMatrix();
+                glTranslatef(flyingCollectibles[idx].x,
+                    flyingCollectibles[idx].y,
+                    flyingCollectibles[idx].z);
+
+                // Scale down and fade out animation
+                collectibleAnimations[i].scale *= 0.9f;
+                collectibleAnimations[i].rotation += 10.0f;
+                collectibleAnimations[i].alpha *= 0.8f;
+
+                glRotatef(collectibleAnimations[i].rotation, 0, 1, 0);
+                glScalef(collectibleAnimations[i].scale,
+                    collectibleAnimations[i].scale,
+                    collectibleAnimations[i].scale);
+
+                glColor4f(1.0f, 0.0f, 0.0f, collectibleAnimations[i].alpha);
+                glutSolidSphere(2.0, 12, 12);
+
+                glPopMatrix();
+
+                if (collectibleAnimations[i].alpha < 0.1f) {
+                    collectibleAnimations[i].active = false;
+                }
+            }
+        }
+    }
+    glEnable(GL_LIGHTING);
+    glDisable(GL_COLOR_MATERIAL);
+}
+
+// Draw birds with flapping animation
+void drawBirds() {
+    birdFlapAnimation += 5.0f;
+    if (birdFlapAnimation > 360.0f) birdFlapAnimation -= 360.0f;
+
+    float flapAngle = sin(birdFlapAnimation * 3.14159f / 180.0f) * 20.0f;
+
+    glColor3f(0.3f, 0.3f, 0.3f); // Gray birds
+    glEnable(GL_COLOR_MATERIAL);
+
+    for (int i = 0; i < numBirds; i++) {
+        if (!birds[i].active) continue;
+
+        glPushMatrix();
+        glTranslatef(birds[i].x, birds[i].y, birds[i].z);
+
+        // Flapping animation
+        glRotatef(flapAngle, 1, 0, 0);
+
+        // Body
+        glutSolidSphere(2.0, 10, 10);
+
+        // Head
+        glPushMatrix();
+        glTranslatef(0, 0.5f, -2.5f);
+        glutSolidSphere(1.0, 8, 8);
+        glPopMatrix();
+
+        // Wings
+        glDisable(GL_LIGHTING);
+        glColor3f(0.2f, 0.2f, 0.2f);
+        glBegin(GL_TRIANGLES);
+        // Left wing
+        glVertex3f(-3.0f, 0, 0);
+        glVertex3f(-5.0f, 0, -3.0f);
+        glVertex3f(-3.0f, 0, -2.0f);
+        // Right wing
+        glVertex3f(3.0f, 0, 0);
+        glVertex3f(5.0f, 0, -3.0f);
+        glVertex3f(3.0f, 0, -2.0f);
+        glEnd();
+        glEnable(GL_LIGHTING);
+
+        glPopMatrix();
+    }
+
+    glDisable(GL_COLOR_MATERIAL);
+}
+
+// Draw Dr. Beram with rescue animation
+void drawDrBeram() {
+    if (!drBeram.active && !drBeramRescued) return;
+
+    glPushMatrix();
+
+    if (drBeramRescued) {
+        // Rescue animation: float up with player
+        float animY = drBeram.y + rescueAnimationTime * 5.0f;
+        glTranslatef(playerX_L2, playerY_L2 + 5.0f + animY, playerZ_L2 - 5.0f);
+        glColor3f(0.0f, 1.0f, 0.0f); // Bright green when rescued
+    }
+    else {
+        glTranslatef(drBeram.x, drBeram.y, drBeram.z);
+        glColor3f(0.0f, 0.8f, 0.0f); // Green for visibility
+    }
+
+    // Draw as a person shape
+    // Body
+    glPushMatrix();
+    glScalef(1.5f, 4.0f, 1.0f);
+    glutSolidCube(1.0);
+    glPopMatrix();
+
+    // Head
+    glPushMatrix();
+    glTranslatef(0, 2.5f, 0);
+    glutSolidSphere(1.0, 12, 12);
+    glPopMatrix();
+
+    // Arms
+    glBegin(GL_LINES);
+    glVertex3f(0, 1.5f, 0);
+    glVertex3f(2.0f, 1.5f, 0);
+    glVertex3f(0, 1.5f, 0);
+    glVertex3f(-2.0f, 1.5f, 0);
+    glEnd();
+
+    // Legs
+    glBegin(GL_LINES);
+    glVertex3f(0, -1.5f, 0);
+    glVertex3f(1.0f, -3.0f, 0);
+    glVertex3f(0, -1.5f, 0);
+    glVertex3f(-1.0f, -3.0f, 0);
+    glEnd();
+
+    glPopMatrix();
+}
+
+// Draw flying player with wing flap animation
+void drawPlayerLevel2() {
+    heroWingFlap += 10.0f;
+    if (heroWingFlap > 360.0f) heroWingFlap -= 360.0f;
+
+    float wingFlap = sin(heroWingFlap * 3.14159f / 180.0f) * 15.0f;
+
+    glPushMatrix();
+    glTranslatef(playerX_L2, playerY_L2, playerZ_L2);
+
+    // Rotate based on movement
+    float tiltAngle = (playerX_L2 - riverMinX) / (riverMaxX - riverMinX) * 30.0f - 15.0f;
+    glRotatef(tiltAngle, 0, 0, 1);
+
+    // Superhero color
+    glColor3f(1.0f, 0.5f, 0.0f); // Orange hero
+    glEnable(GL_COLOR_MATERIAL);
+
+    // Body
+    glPushMatrix();
+    glScalef(2.0f, 3.0f, 1.5f);
+    glutSolidCube(1.0);
+    glPopMatrix();
+
+    // Head
+    glPushMatrix();
+    glTranslatef(0, 2.2f, 0);
+    glutSolidSphere(1.0, 16, 16);
+    glPopMatrix();
+
+    // Cape (flowing back)
+    glDisable(GL_LIGHTING);
+    glColor3f(0.8f, 0.0f, 0.0f); // Red cape
+    glBegin(GL_TRIANGLE_STRIP);
+    glVertex3f(0, 1.0f, 0.5f);
+    glVertex3f(0, -1.0f, 0.5f);
+    glVertex3f(-1.0f, 0.5f, -1.0f);
+    glVertex3f(-1.0f, -1.5f, -1.0f);
+    glVertex3f(1.0f, 0.5f, -1.0f);
+    glVertex3f(1.0f, -1.5f, -1.0f);
+    glEnd();
+    glEnable(GL_LIGHTING);
+
+    // Wings with flapping animation
+    glDisable(GL_LIGHTING);
+    glColor3f(0.9f, 0.9f, 0.1f); // Yellow wings
+
+    // Left wing
+    glPushMatrix();
+    glRotatef(wingFlap, 1, 0, 0);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(-1.5f, 0, 0);
+    glVertex3f(-4.0f, 0, -3.0f);
+    glVertex3f(-1.5f, 0, -2.0f);
+    glEnd();
+    glPopMatrix();
+
+    // Right wing
+    glPushMatrix();
+    glRotatef(-wingFlap, 1, 0, 0);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(1.5f, 0, 0);
+    glVertex3f(4.0f, 0, -3.0f);
+    glVertex3f(1.5f, 0, -2.0f);
+    glEnd();
+    glPopMatrix();
+
+    glEnable(GL_LIGHTING);
+    glDisable(GL_COLOR_MATERIAL);
+
+    glPopMatrix();
+}
+
+// Setup sunset lighting - IMPROVED with visible animation
+void setupSunLight() {
+    glEnable(GL_LIGHTING);
+
+    // Main sunlight (LIGHT0)
+    glEnable(GL_LIGHT0);
+
+    // Sun color based on sunset progress
+    GLfloat lightDiffuse[] = { sunColor[0], sunColor[1], sunColor[2], 1.0f };
+    GLfloat lightAmbient[] = {
+        0.2f + sunsetProgress * 0.3f,
+        0.2f + sunsetProgress * 0.2f,
+        0.1f + sunsetProgress * 0.1f,
+        1.0f
+    };
+    GLfloat lightSpecular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+
+    // Sun position (moves with sunset)
+    float sunX = 200.0f - sunsetProgress * 300.0f;
+    float sunY = 150.0f - sunsetProgress * 100.0f;
+    GLfloat lightPosition[] = { sunX, sunY, -500.0f, 1.0f };
+
+    glLightfv(GL_LIGHT0, GL_AMBIENT, lightAmbient);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, lightDiffuse);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, lightSpecular);
+    glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
+
+    // Fill light (LIGHT1) for better illumination
+    glEnable(GL_LIGHT1);
+    GLfloat fillAmbient[] = { 0.1f, 0.1f, 0.1f, 1.0f };
+    GLfloat fillDiffuse[] = { 0.4f, 0.4f, 0.4f, 1.0f };
+    GLfloat fillPosition[] = { 0.0f, 100.0f, 0.0f, 1.0f };
+
+    glLightfv(GL_LIGHT1, GL_AMBIENT, fillAmbient);
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, fillDiffuse);
+    glLightfv(GL_LIGHT1, GL_POSITION, fillPosition);
+}
+
+// Update sunset progress - IMPROVED
+void updateSunset(float deltaTime) {
+    if (!sunsetActive) return;
+
+    // Gradually progress sunset based on time and player position
+    float progressByTime = (float)(level2DurationMs - remainingTime_L2) / level2DurationMs;
+    float progressByDistance = (riverStartZ - playerZ_L2) / (riverStartZ - riverEndZ);
+
+    // Combine both factors
+    sunsetProgress = 0.7f * progressByTime + 0.3f * progressByDistance;
+
+    if (sunsetProgress > 1.0f) sunsetProgress = 1.0f;
+
+    // Smooth color transition from yellow to orange/red
+    sunColor[0] = 1.0f;                    // Red stays high
+    sunColor[1] = 0.9f - (sunsetProgress * 0.7f); // Green decreases
+    sunColor[2] = 0.1f - (sunsetProgress * 0.1f); // Blue decreases slightly
+}
+
+// Draw HUD for Level 2
+void drawScoreLevel2() {
+    char buffer[64];
+    sprintf(buffer, "Score: %d", score_L2);
+    drawText2D(-0.95f, 0.9f, buffer);
+}
+
+void drawTimerLevel2() {
+    int seconds = remainingTime_L2 / 1000;
+    int minutes = seconds / 60;
+    seconds = seconds % 60;
+
+    char buffer[64];
+    sprintf(buffer, "Time: %02d:%02d", minutes, seconds);
+    drawText2D(0.6f, 0.9f, buffer);
+}
+
+void drawHeightIndicator() {
+    char buffer[64];
+    sprintf(buffer, "Height: %.0f", playerY_L2);
+    drawText2D(-0.95f, 0.8f, buffer);
+}
+
+void drawSpeedIndicator() {
+    char buffer[64];
+    sprintf(buffer, "Speed: %.0f", playerSpeed_L2);
+    drawText2D(-0.95f, 0.7f, buffer);
+}
+
+void drawCameraMode() {
+    const char* mode = (cameraMode_L2 == FIRST_PERSON) ? "1st Person" : "3rd Person";
+    char buffer[64];
+    sprintf(buffer, "Camera: %s", mode);
+    drawText2D(0.6f, 0.8f, buffer);
+}
+
+void drawControlsInfo() {
+    drawText2D(-0.95f, -0.9f, "Controls: A/D=Left/Right, W/S=Up/Down, Arrows=Speed");
+    drawText2D(-0.95f, -0.95f, "Up=Speed+, Down=Speed-, 1/3=Camera, ESC=Exit");
+}
+
+void drawGameStatusLevel2() {
+    if (gameState_L2 == GAME_WON) {
+        glDisable(GL_LIGHTING);
+        drawText2D(-0.35f, 0.2f, "MISSION ACCOMPLISHED!");
+        drawText2D(-0.3f, 0.1f, "Dr. Beram Rescued!");
+        drawText2D(-0.25f, 0.0f, "Final Score: ");
+
+        char scoreBuffer[32];
+        sprintf(scoreBuffer, "%d", score_L2);
+        drawText2D(0.05f, 0.0f, scoreBuffer);
+
+        drawText2D(-0.4f, -0.1f, "Press ESC to exit");
+        glEnable(GL_LIGHTING);
+    }
+    else if (gameState_L2 == GAME_LOST) {
+        glDisable(GL_LIGHTING);
+        drawText2D(-0.3f, 0.1f, "MISSION FAILED!");
+        drawText2D(-0.35f, 0.0f, "Time's up or crashed!");
+        drawText2D(-0.4f, -0.1f, "Press ESC to exit");
+        glEnable(GL_LIGHTING);
+    }
+}
+
+// ===============================
+// Level 2 GLUT Callbacks - UPDATED for smooth movement
+// ===============================
+
+void keyboardLevel2(unsigned char key, int x, int y) {
+    if (gameState_L2 != GAME_PLAYING) {
+        if (key == 27) exit(0); // ESC to exit
+        return;
+    }
+
+    switch (key) {
+    case 'a': case 'A': // Left - PRESS
+        keyStates['a'] = true;
+        break;
+    case 'd': case 'D': // Right - PRESS
+        keyStates['d'] = true;
+        break;
+    case 'w': case 'W': // Speed up - PRESS
+        keyStates['w'] = true;
+        break;
+    case 's': case 'S': // Slow down - PRESS
+        keyStates['s'] = true;
+        break;
+    case ' ': // Space for up - PRESS
+        keyStates[' '] = true;
+        break;
+    case 'c': case 'C': // Down - PRESS
+        keyStates['c'] = true;
+        break;
+    case '1': // First person
+        cameraMode_L2 = FIRST_PERSON;
+        break;
+    case '3': // Third person
+        cameraMode_L2 = THIRD_PERSON;
+        break;
+    case 27: // ESC
+        exit(0);
+        break;
+    }
+
+    glutPostRedisplay();
+}
+
+void keyboardUpLevel2(unsigned char key, int x, int y) {
+    // Handle key releases for smooth movement
+    switch (key) {
+    case 'a': case 'A': // Left - RELEASE
+        keyStates['a'] = false;
+        break;
+    case 'd': case 'D': // Right - RELEASE
+        keyStates['d'] = false;
+        break;
+    case 'w': case 'W': // Speed up - RELEASE
+        keyStates['w'] = false;
+        break;
+    case 's': case 'S': // Slow down - RELEASE
+        keyStates['s'] = false;
+        break;
+    case ' ': // Space for up - RELEASE
+        keyStates[' '] = false;
+        break;
+    case 'c': case 'C': // Down - RELEASE
+        keyStates['c'] = false;
+        break;
+    }
+}
+
+void specialKeysLevel2(int key, int x, int y) {
+    if (gameState_L2 != GAME_PLAYING) return;
+
+    switch (key) {
+    case GLUT_KEY_UP: // Up arrow - PRESS
+        keyStates['w'] = true;
+        break;
+    case GLUT_KEY_DOWN: // Down arrow - PRESS
+        keyStates['s'] = true;
+        break;
+    case GLUT_KEY_LEFT: // Left arrow - PRESS
+        keyStates['a'] = true;
+        break;
+    case GLUT_KEY_RIGHT: // Right arrow - PRESS
+        keyStates['d'] = true;
+        break;
+    }
+}
+
+void specialUpLevel2(int key, int x, int y) {
+    // Handle special key releases
+    switch (key) {
+    case GLUT_KEY_UP: // Up arrow - RELEASE
+        keyStates['w'] = false;
+        break;
+    case GLUT_KEY_DOWN: // Down arrow - RELEASE
+        keyStates['s'] = false;
+        break;
+    case GLUT_KEY_LEFT: // Left arrow - RELEASE
+        keyStates['a'] = false;
+        break;
+    case GLUT_KEY_RIGHT: // Right arrow - RELEASE
+        keyStates['d'] = false;
+        break;
+    }
+}
+
+void idleLevel2() {
+    int currentMs = glutGet(GLUT_ELAPSED_TIME);
+    float deltaTime = (currentMs - prevTimeMs_L2) / 1000.0f;
+    prevTimeMs_L2 = currentMs;
+
+    if (gameState_L2 != GAME_PLAYING) {
+        // Update rescue animation if won
+        if (gameState_L2 == GAME_WON) {
+            rescueAnimationTime += deltaTime;
+        }
+        // Still update sunset animation
+        updateSunset(deltaTime);
+        glutPostRedisplay();
+        return;
+    }
+
+    // ========== CONTINUOUS MOVEMENT HANDLING ==========
+
+    // Horizontal movement (A/D or Left/Right arrows)
+    float horizontalMove = 0.0f;
+    if (keyStates['a']) {
+        horizontalMove -= moveStep_L2 * deltaTime * 20.0f;
+    }
+    if (keyStates['d']) {
+        horizontalMove += moveStep_L2 * deltaTime * 20.0f;
+    }
+
+    // Apply horizontal movement
+    if (horizontalMove != 0.0f) {
+        playerX_L2 += horizontalMove;
+    }
+
+    // Vertical movement (W/S) - Key controlled only, no gravity
+    if (keyStates['w']) {
+        verticalSpeed = liftForce; // W for UP
+    }
+    else if (keyStates['s']) {
+        verticalSpeed = -liftForce; // S for DOWN
+    }
+    else {
+        verticalSpeed = 0.0f; // No movement when no keys pressed (no gravity)
+    }
+
+    // Speed control (Up/Down arrows) - SLOWER
+    if (keyStates[GLUT_KEY_UP]) { // Up arrow for speed up
+        playerSpeed_L2 += 3.0f * deltaTime; // Smooth acceleration
+        if (playerSpeed_L2 > 30.0f) playerSpeed_L2 = 30.0f;
+    }
+    if (keyStates[GLUT_KEY_DOWN]) { // Down arrow for slow down
+        playerSpeed_L2 -= 3.0f * deltaTime; // Smooth deceleration
+        if (playerSpeed_L2 < 8.0f) playerSpeed_L2 = 8.0f;
+    }
+
+    // ========== REST OF THE GAME LOGIC ==========
+
+    // Update timer
+    int elapsed = currentMs - level2StartTimeMs;
+    remainingTime_L2 = level2DurationMs - elapsed;
+    if (remainingTime_L2 <= 0) {
+        remainingTime_L2 = 0;
+        gameState_L2 = GAME_LOST;
+        glutPostRedisplay();
+        return;
+    }
+
+    // Update sunset animation
+    updateSunset(deltaTime);
+
+    // Auto-forward movement (always fly forward)
+    playerZ_L2 -= playerSpeed_L2 * deltaTime;
+
+    // Apply vertical movement
+    playerY_L2 += verticalSpeed * deltaTime;
+
+    // Clamp player position
+    if (playerX_L2 < riverMinX) {
+        playerX_L2 = riverMinX;
+    }
+    else if (playerX_L2 > riverMaxX) {
+        playerX_L2 = riverMaxX;
+    }
+
+    if (playerY_L2 < minHeight) {
+        playerY_L2 = minHeight;
+        verticalSpeed = 0; // Stop falling when hit ground
+    }
+    else if (playerY_L2 > maxHeight) {
+        playerY_L2 = maxHeight;
+        verticalSpeed = 0; // Stop rising when hit ceiling
+    }
+
+    // Check if player reached end without rescuing
+    if (playerZ_L2 < riverEndZ && !drBeramRescued) {
+        gameState_L2 = GAME_LOST; // Failed to rescue in time
+        glutPostRedisplay();
+        return;
+    }
+
+    // Collision detection
+    AABB_L2 playerBox = getPlayerAABB_L2();
+
+    // Check collectibles
+    for (int i = 0; i < numFlyingCollectibles; i++) {
+        if (flyingCollectibles[i].active && checkAABBCollision3D(playerBox, flyingCollectibles[i])) {
+            flyingCollectibles[i].active = false;
+            score_L2 += 20; // More points for flying collectibles
+            addCollectibleAnimation(i, flyingCollectibles[i].x, flyingCollectibles[i].y, flyingCollectibles[i].z);
+        }
+    }
+
+    // Check birds
+    for (int i = 0; i < numBirds; i++) {
+        if (birds[i].active && checkAABBCollision3D(playerBox, birds[i])) {
+            handleBirdCollision(i);
+            break;
+        }
+    }
+
+    // Check Dr. Beram
+    if (drBeram.active && checkAABBCollision3D(playerBox, drBeram)) {
+        drBeram.active = false;
+        drBeramRescued = true;
+        gameState_L2 = GAME_WON;
+        score_L2 += 500; // Big bonus for rescue
+    }
+
+    // Move birds (simple animation) - birds fly toward player
+    for (int i = 0; i < numBirds; i++) {
+        if (birds[i].active) {
+            // Birds move in a sine wave pattern
+            birds[i].x += sin(currentMs * 0.001f + i) * 0.5f;
+            birds[i].y += sin(currentMs * 0.002f + i) * 0.3f;
+            birds[i].z += 15.0f * deltaTime; // Birds move toward player
+
+            // If bird passes player, reset it behind
+            if (birds[i].z > playerZ_L2 + 100.0f) {
+                birds[i].z = playerZ_L2 - 300.0f;
+                birds[i].x = randRange(riverMinX + 10, riverMaxX - 10);
+                birds[i].y = randRange(20, 35);
+            }
+        }
+    }
+
+    glutPostRedisplay();
+}
+
+void displayLevel2() {
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    setupCameraLevel2();
+    setupSunLight();
+
+    drawSky();
+    drawNileRiver();
+    drawFlyingCollectibles();
+    drawBirds();
+    drawDrBeram();
+    drawPlayerLevel2();
+
+    // HUD elements
+    glDisable(GL_LIGHTING);
+    drawScoreLevel2();
+    drawTimerLevel2();
+    drawHeightIndicator();
+    drawSpeedIndicator();
+    drawCameraMode();
+    drawControlsInfo();
+    drawGameStatusLevel2();
+    glEnable(GL_LIGHTING);
+
+    glutSwapBuffers();
+}
+
+void reshapeLevel2(int w, int h) {
+    if (h == 0) h = 1;
+    float aspect = (float)w / (float)h;
+
+    glViewport(0, 0, w, h);
+
+    glMatrixMode(GL_PROJECTION);
+    glLoadIdentity();
+    gluPerspective(60.0, aspect, 1.0, 3000.0); // Larger far plane for flying
+
+    glMatrixMode(GL_MODELVIEW);
+}
+
+// Safe model loading that won't crash if files don't exist
+void loadModelsLevel2() {
+    // COMMENTED OUT - Using glut placeholders instead
+    // The Model_3DS::Load() function is causing file access assertions
+
+    // Note: Person B should provide actual 3DS files later
+    // For now, we'll use glutSolidSphere/Cube placeholders
+
+    modelsLoaded = false; // Flag to indicate we're using placeholders
+
+    // Load sky texture - ADDED
+    char skyTexturePath[256];
+    strcpy_s(skyTexturePath, sizeof(skyTexturePath), "textures/blu-sky-3.bmp");
+    skyTexture.Load(skyTexturePath);
+
+    // Set texture wrapping to repeat so it tiles across the sky
+    if (skyTexture.texture[0] != 0) {
+        glBindTexture(GL_TEXTURE_2D, skyTexture.texture[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+}
+
+void initGLLevel2() {
+    srand((unsigned int)time(NULL));
+    glClearColor(0.1f, 0.2f, 0.4f, 1.0f); // Sky blue
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_NORMALIZE);
+    glShadeModel(GL_SMOOTH);
+    glEnable(GL_COLOR_MATERIAL);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    setupSunLight();
+    setupLevel2();
+
+    // Call the function to load sky texture
+    loadModelsLevel2();  // UNCOMMENTED - Now it only loads texture, not 3DS models
+
+    prevTimeMs_L2 = glutGet(GLUT_ELAPSED_TIME);
+    level2StartTimeMs = prevTimeMs_L2;
+    remainingTime_L2 = level2DurationMs;
+    gameState_L2 = GAME_PLAYING;
+}
+
+#endif // RUN_LEVEL_2 - End of Level 2 code
+
+// ===============================
+// SINGLE MAIN FUNCTION (shared by both levels)
 // ===============================
 
 int main(int argc, char** argv) {
     glutInit(&argc, argv);
-    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH);
-    glutInitWindowSize(800, 600);
-    glutCreateWindow("El Ragol El 3ennab . Level 1");
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGBA | GLUT_DEPTH | GLUT_MULTISAMPLE);
+    glutInitWindowSize(1024, 768);
 
+#ifdef RUN_LEVEL_2
+    glutCreateWindow("El Ragol El 3ennab - Level 2 (Flying over Nile)");
+    initGLLevel2();
+    glutDisplayFunc(displayLevel2);
+    glutIdleFunc(idleLevel2);
+    glutKeyboardFunc(keyboardLevel2);
+    glutKeyboardUpFunc(keyboardUpLevel2);        // NEW: For smooth key release handling
+    glutSpecialFunc(specialKeysLevel2);
+    glutSpecialUpFunc(specialUpLevel2);          // NEW: For smooth arrow key release handling
+    glutReshapeFunc(reshapeLevel2);
+#else
+    glutCreateWindow("El Ragol El 3ennab - Level 1");
     initGL();
-
     glutDisplayFunc(display);
     glutIdleFunc(idle);
     glutKeyboardFunc(keyboard);
     glutReshapeFunc(reshape);
+#endif
 
     glutMainLoop();
     return 0;
