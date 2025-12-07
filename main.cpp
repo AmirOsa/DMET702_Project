@@ -24,6 +24,119 @@
 // ===============================
 // SHARED UTILITIES (used by both levels)
 // ===============================
+// Shared sky texture for both levels
+GLTexture skyTexture;
+
+// Shared sunset parameters.
+// Level 2 animates these. Level 1 just uses the default "start" values.
+float sunColor[3] = { 1.0f, 0.9f, 0.0f }; // yellowish sun
+float sunsetProgress = 0.0f;              // 0..1, 0 = no sunset
+
+// Load the sky texture once and configure it
+void loadSkyTexture() {
+    char skyTexturePath[256];
+    strcpy_s(skyTexturePath, sizeof(skyTexturePath), "textures/blu-sky-3.bmp");
+    skyTexture.Load(skyTexturePath);
+
+    if (skyTexture.texture[0] != 0) {
+        glBindTexture(GL_TEXTURE_2D, skyTexture.texture[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+}
+
+// Draws the textured sky "billboard" in front of the camera.
+// Level 2 will animate sunsetProgress. Level 1 will just see the initial state.
+void drawSky() {
+    glDisable(GL_LIGHTING);
+
+    // If we have a sky texture . use it
+    if (skyTexture.texture[0] != 0) {
+        glEnable(GL_TEXTURE_2D);
+        skyTexture.Use(); // bind texture
+
+        // Blend texture with a sunset tint
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+        glColor4f(
+            1.0f,
+            1.0f - sunsetProgress * 0.5f,  // reduce green as sun sets
+            1.0f - sunsetProgress * 0.7f,  // reduce blue as sun sets
+            1.0f
+        );
+    }
+    else {
+        // Fallback . simple gradient quad if texture is missing
+        glDisable(GL_TEXTURE_2D);
+
+        glBegin(GL_QUADS);
+        // bottom (near horizon)
+        glColor3f(
+            0.8f + sunsetProgress * 0.2f,
+            0.3f + sunsetProgress * 0.4f,
+            0.1f
+        );
+        glVertex3f(-1500, 0, -2500);
+        glVertex3f(1500, 0, -2500);
+
+        // top
+        glColor3f(
+            0.1f,
+            0.2f + sunsetProgress * 0.3f,
+            0.8f - sunsetProgress * 0.7f
+        );
+        glVertex3f(1500, 800, -2500);
+        glVertex3f(-1500, 800, -2500);
+        glEnd();
+
+        glEnable(GL_LIGHTING);
+        return;
+    }
+
+    // Draw a big textured screen in the distance
+    float screenWidth = 2000.0f;
+    float screenHeight = 800.0f;
+    float screenDepth = -2500.0f;
+
+    glBegin(GL_QUADS);
+    // bottom
+    glTexCoord2f(0.0f, 0.7f); glVertex3f(-screenWidth, 0, screenDepth);
+    glTexCoord2f(1.0f, 0.7f); glVertex3f(screenWidth, 0, screenDepth);
+    // top
+    glTexCoord2f(1.0f, 0.0f); glVertex3f(screenWidth, screenHeight, screenDepth);
+    glTexCoord2f(0.0f, 0.0f); glVertex3f(-screenWidth, screenHeight, screenDepth);
+    glEnd();
+
+    // Draw the sun as a glowing sphere on that screen
+    if (sunsetProgress < 0.8f) {
+        glDisable(GL_TEXTURE_2D);
+
+        float sunSize = 25.0f - sunsetProgress * 12.0f;
+        float sunY = 400.0f - sunsetProgress * 300.0f;
+        float sunX = 500.0f - sunsetProgress * 400.0f;
+
+        glPushMatrix();
+        glTranslatef(sunX, sunY, screenDepth + 5.0f);
+
+        // main sun disc
+        glColor3f(sunColor[0], sunColor[1], sunColor[2]);
+        glutSolidSphere(sunSize, 32, 32);
+
+        // glow
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glColor4f(sunColor[0], sunColor[1], sunColor[2], 0.3f);
+        glutSolidSphere(sunSize * 1.5f, 24, 24);
+        glDisable(GL_BLEND);
+
+        glPopMatrix();
+    }
+
+    glDisable(GL_TEXTURE_2D);
+    glEnable(GL_LIGHTING);
+}
 
 enum CameraMode { FIRST_PERSON, THIRD_PERSON };
 enum GameState { GAME_PLAYING, GAME_WON, GAME_LOST };
@@ -157,9 +270,11 @@ AABB checkpoint;
 // Lighting . street lamp (Level 1)
 GLfloat lampBasePos[4] = { 0.0f, 5.0f, -30.0f, 1.0f }; // base position
 float   lampRotateAngle = 0.0f;  // rotation for animation
-float   lampIntensity = 1.0f;  // light intensity
+float   lampIntensity = 2.0f;  // light intensity
 
-// Time for delta time computations
+// Lighting . street lamp (Level 1)
+
+// Time for delta time computationsFl
 int prevTimeMs = 0;
 
 // Movement step
@@ -215,6 +330,51 @@ AABB getPlayerAABB() {
 AABB getTrashWorldAABB(const AABB& src) {
     // collider center IS the logical center in the world
     return src;
+}
+
+// Check if a candidate collectible box touches cars, trash or earlier collectibles
+bool collidesWithAnyObstacleOrCollectible(const AABB& box, int uptoCollectIndex) {
+    // Cars
+    for (int i = 0; i < numCars; ++i) {
+        if (!cars[i].active) continue;
+        if (checkAABBCollision(box, cars[i])) return true;
+    }
+
+    // Trash cans (use world AABB, in case of offsets)
+    for (int i = 0; i < numTrashCans; ++i) {
+        if (!trashCans[i].active) continue;
+        AABB trashBox = getTrashWorldAABB(trashCans[i]);
+        if (checkAABBCollision(box, trashBox)) return true;
+    }
+
+    // Previously placed collectibles only, from index 0 to uptoCollectIndex-1
+    for (int i = 0; i < uptoCollectIndex; ++i) {
+        if (!collectibles[i].active) continue;
+        if (checkAABBCollision(box, collectibles[i])) return true;
+    }
+
+    return false;
+}
+
+// Check if a box collides with already placed cars / trash cans
+// We only look at the first numCarsToCheck cars and numTrashToCheck trash cans
+bool collidesWithCarsAndTrashLimited(const AABB& box,
+    int numCarsToCheck,
+    int numTrashToCheck) {
+    // cars
+    for (int i = 0; i < numCarsToCheck; ++i) {
+        if (!cars[i].active) continue;
+        if (checkAABBCollision(box, cars[i])) return true;
+    }
+
+    // trash cans
+    for (int i = 0; i < numTrashToCheck; ++i) {
+        if (!trashCans[i].active) continue;
+        AABB tBox = getTrashWorldAABB(trashCans[i]);
+        if (checkAABBCollision(box, tBox)) return true;
+    }
+
+    return false;
 }
 
 
@@ -291,34 +451,59 @@ void handleObstacleCollision(const AABB& obstacle) {
 
 
 void spawnExtraObstacles(int extraCars, int extraTrash) {
-    // Add extra cars into any free slots
+    // Extra cars
     while (extraCars > 0 && numCars < MAX_CARS) {
-        AABB& c = cars[numCars];
-        c.x = randRange(streetMinX + 2.0f, streetMaxX - 2.0f);
-        c.z = randRange(streetEndZ + 30.0f, -10.0f);
-        c.halfW = CAR_COLLIDER_HALF_W;
-        c.halfD = CAR_COLLIDER_HALF_D;
-        c.active = true;
-        numCars++;
-        extraCars--;
+        bool placed = false;
+        int attempts = 0;
+
+        while (!placed && attempts < 50) {
+            AABB candidate;
+            candidate.x = randRange(streetMinX + 2.0f, streetMaxX - 2.0f);
+            candidate.z = randRange(streetEndZ + 30.0f, -10.0f);
+            candidate.halfW = CAR_COLLIDER_HALF_W;
+            candidate.halfD = CAR_COLLIDER_HALF_D;
+            candidate.active = true;
+
+            if (!collidesWithCarsAndTrashLimited(candidate, numCars, numTrashCans)) {
+                cars[numCars] = candidate;
+                cars[numCars].active = true;
+                ++numCars;
+                --extraCars;
+                placed = true;
+            }
+            ++attempts;
+        }
+
+        if (!placed) break; // no safe spot found
     }
 
-    // Add extra trash cans in the street where player can reach them
+    // Extra trash cans
     while (extraTrash > 0 && numTrashCans < MAX_TRASHCANS) {
-        AABB& t = trashCans[numTrashCans];
-        // Place in street (inside player boundaries)
-        bool useLeft = (numTrashCans % 2 == 0);
-        t.x = useLeft ? -9.0f : 9.0f;  // Inside street boundaries
-        // Place near buildings (closer to player)
-        // Store collision box at base position
-        t.z = randRange(-50.0f, -10.0f);
-        t.halfW = TRASH_COLLIDER_HALF_W;
-        t.halfD = TRASH_COLLIDER_HALF_D;
-        t.active = true;
-        numTrashCans++;
-        extraTrash--;
+        bool placed = false;
+        int attempts = 0;
+
+        while (!placed && attempts < 40) {
+            AABB candidate;
+            candidate.x = randRange(streetMinX + 1.0f, streetMaxX - 1.0f);
+            candidate.z = randRange(-50.0f, -10.0f);
+            candidate.halfW = TRASH_COLLIDER_HALF_W;
+            candidate.halfD = TRASH_COLLIDER_HALF_D;
+            candidate.active = true;
+
+            if (!collidesWithCarsAndTrashLimited(candidate, numCars, numTrashCans)) {
+                trashCans[numTrashCans] = candidate;
+                trashCans[numTrashCans].active = true;
+                ++numTrashCans;
+                --extraTrash;
+                placed = true;
+            }
+            ++attempts;
+        }
+
+        if (!placed) break;
     }
 }
+
 
 // This sets up Level 1 layout . Person A can tweak positions later
 void setupLevel1() {
@@ -350,12 +535,30 @@ void setupLevel1() {
     }
     // closer to player
 
+    // place cars so they never overlap each other
     for (int i = 0; i < numCars; ++i) {
-        cars[i].x = randRange(streetMinX + 2.0f, streetMaxX - 2.0f);
-        cars[i].z = randRange(carMinZ, carMaxZ);
-        cars[i].halfW = CAR_COLLIDER_HALF_W;
-        cars[i].halfD = CAR_COLLIDER_HALF_D;
-        cars[i].active = true;
+        bool placed = false;
+        int attempts = 0;
+
+        while (!placed && attempts < 50) {
+            AABB candidate;
+            candidate.x = randRange(streetMinX + 2.0f, streetMaxX - 2.0f);
+            candidate.z = randRange(carMinZ, carMaxZ);
+            candidate.halfW = CAR_COLLIDER_HALF_W;
+            candidate.halfD = CAR_COLLIDER_HALF_D;
+            candidate.active = true;
+
+            // only compare with cars that were already placed
+            if (!collidesWithCarsAndTrashLimited(candidate, i, 0)) {
+                cars[i] = candidate;
+                placed = true;
+            }
+            ++attempts;
+        }
+
+        if (!placed) {
+            cars[i].active = false; // fail safe
+        }
     }
 
 
@@ -364,36 +567,43 @@ void setupLevel1() {
     // Buildings are at z positions: streetStartZ, streetStartZ-60, streetStartZ-120, etc.
     // Place trash cans slightly in front of each building (closer to camera = higher Z)
     // Position them at the edge of the street so player can reach them
-    const float leftTrashX = -9.0f;   // Inside street boundary (streetMinX = -10.0f)
-    const float rightTrashX = 9.0f;   // Inside street boundary (streetMaxX = 10.0f)
-    const float buildingSpacing = 60.0f;       // Buildings are spaced 60 units apart
-    const float trashOffsetZ = 2.0f;
-    const float trashSpacing = 40.0f;
-    // Place trash cans 2 units in front of buildings
-
+    // ----- Trash cans -----
+// ----- Trash cans -----
+// Randomly scatter trash cans across the street (not only edges)
+// and do not overlap with cars or other trash cans
     numTrashCans = 0;
+    const float trashSpacing = 40.0f;
 
     for (float z = -30.0f; z > streetEndZ && numTrashCans < MAX_TRASHCANS; z -= trashSpacing) {
-        // Left side trash can
-        if (numTrashCans < MAX_TRASHCANS) {
-            trashCans[numTrashCans].x = leftTrashX;
-            trashCans[numTrashCans].z = z;
-            trashCans[numTrashCans].halfW = TRASH_COLLIDER_HALF_W;
-            trashCans[numTrashCans].halfD = TRASH_COLLIDER_HALF_D;
-            trashCans[numTrashCans].active = true;
-            numTrashCans++;
-        }
+        int cansThisRow = 1 + (rand() % 2); // 1 or 2 cans per row
 
-        // Right side trash can
-        if (numTrashCans < MAX_TRASHCANS) {
-            trashCans[numTrashCans].x = rightTrashX;
-            trashCans[numTrashCans].z = z;
-            trashCans[numTrashCans].halfW = TRASH_COLLIDER_HALF_W;
-            trashCans[numTrashCans].halfD = TRASH_COLLIDER_HALF_D;
-            trashCans[numTrashCans].active = true;
-            numTrashCans++;
+        for (int c = 0; c < cansThisRow && numTrashCans < MAX_TRASHCANS; ++c) {
+            bool placed = false;
+            int attempts = 0;
+
+            while (!placed && attempts < 40) {
+                AABB candidate;
+                candidate.x = randRange(streetMinX + 1.0f, streetMaxX - 1.0f);
+                candidate.z = z + randRange(-5.0f, 5.0f);
+                candidate.halfW = TRASH_COLLIDER_HALF_W;
+                candidate.halfD = TRASH_COLLIDER_HALF_D;
+                candidate.active = true;
+
+                // compare with all cars and all previously placed trash cans
+                if (!collidesWithCarsAndTrashLimited(candidate, numCars, numTrashCans)) {
+                    trashCans[numTrashCans] = candidate;
+                    trashCans[numTrashCans].active = true;
+                    ++numTrashCans;
+                    placed = true;
+                }
+
+                ++attempts;
+            }
+            // if not placed after attempts, we just skip this can
         }
     }
+
+
     // Add debug function to see where collision boxes are vs where models are
 
     // ----- Collectibles (3ennabeyat) -----
@@ -403,12 +613,32 @@ void setupLevel1() {
     float colMaxZ = -5.0f;
 
     for (int i = 0; i < numCollectibles; ++i) {
-        collectibles[i].x = randRange(streetMinX + 1.0f, streetMaxX - 1.0f);
-        collectibles[i].z = randRange(colMinZ, colMaxZ);
-        collectibles[i].halfW = 0.5f;
-        collectibles[i].halfD = 0.5f;
-        collectibles[i].active = true;
+        collectibles[i].active = false;   // default, until we find a free spot
+
+        const float halfW = 0.5f;
+        const float halfD = 0.5f;
+
+        bool placed = false;
+        int attempts = 0;
+
+        while (!placed && attempts < 50) {   // try several random spots
+            AABB candidate;
+            candidate.x = randRange(streetMinX + 1.0f, streetMaxX - 1.0f);
+            candidate.z = randRange(colMinZ, colMaxZ);
+            candidate.halfW = halfW;
+            candidate.halfD = halfD;
+            candidate.active = true;
+
+            if (!collidesWithAnyObstacleOrCollectible(candidate, i)) {
+                collectibles[i] = candidate;
+                placed = true;
+            }
+            attempts++;
+        }
+
+        // If we fail to place after many tries, this collectible stays inactive
     }
+
 
     // ----- Checkpoint at far end of street -----
     checkpoint.x = 0.0f;
@@ -495,6 +725,16 @@ void drawGameStatus() {
 // ===============================
 // Drawing the world (Person A layout)
 // ===============================
+
+
+
+// >>> ADD THIS BLOCK <<<
+const float LAMP_X = 16.0f;   // distance from street center
+const float LAMP_SPACING_Z = 60.0f;   // distance between lamp pairs on Z
+const float LAMP_OFFSET_Z = 30.0f;   // lamps sit between building rows
+const float LAMP_HEIGHT = 6.0f;    // approximate lamp head height
+// <<< END OF NEW BLOCK >>>
+
 
 void drawStreet() {
     // Force our own clean state for the ground
@@ -660,12 +900,13 @@ void drawCheckpoint() {
 }
 
 void drawLamps() {
-    const float lampX = 16.0f;  // Increased from 11.0f to 12.0f for more spacing
+    const float lampX = LAMP_X;
     const float scale = 0.95f;
     const float lampY = -0.5f;   // lift lamp a bit above the ground
 
-    for (float z = streetStartZ; z > streetEndZ; z -= 60.0f) {
-        float midZ = z - 30.0f;
+    for (float z = streetStartZ; z > streetEndZ; z -= LAMP_SPACING_Z) {
+        float midZ = z - LAMP_OFFSET_Z;
+
 
         // LEFT lamp
         glPushMatrix();
@@ -682,6 +923,50 @@ void drawLamps() {
         lampModel.Draw();
         glPopMatrix();
     }
+}
+
+// Simple glowing circles on the ground under each lamp
+void drawLampLightPools() {
+    const float lampX = LAMP_X;
+    const float spacing = LAMP_SPACING_Z;
+    const float offsetZ = LAMP_OFFSET_Z;
+
+    const float radius = 4.0f;
+    const int   segments = 20;
+
+    glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    for (float z = streetStartZ; z > streetEndZ; z -= spacing) {
+        float midZ = z - offsetZ;
+
+        // Two sides, left and right
+        for (int side = -1; side <= 1; side += 2) {
+            glPushMatrix();
+            glTranslatef(side * lampX, 0.01f, midZ);
+
+            glBegin(GL_TRIANGLE_FAN);
+            // center, bright
+            glColor4f(1.0f, 0.95f, 0.7f, 0.6f);
+            glVertex3f(0.0f, 0.0f, 0.0f);
+
+            // edge, transparent
+            glColor4f(1.0f, 0.95f, 0.7f, 0.0f);
+            for (int i = 0; i <= segments; ++i) {
+                float angle = (2.0f * 3.14159f * i) / segments;
+                float px = cosf(angle) * radius;
+                float pz = sinf(angle) * radius;
+                glVertex3f(px, 0.0f, pz);
+            }
+            glEnd();
+
+            glPopMatrix();
+        }
+    }
+
+    glDisable(GL_BLEND);
+    glEnable(GL_LIGHTING);
 }
 
 
@@ -745,10 +1030,11 @@ void applyLampLight() {
 void updateLamp(float deltaTime) {
     (void)deltaTime; // we don't need it now
 
-    const float lampX = 12.0f;   // same as in drawLamps() - increased spacing
-    const float lampHeight = 6.0f;    // approximate lamp head height
-    const float spacing = 60.0f;   // distance between building rows
-    const float offsetZ = 30.0f;   // lamps are between buildings
+    const float lampX = LAMP_X;
+    const float lampHeight = LAMP_HEIGHT;
+    const float spacing = LAMP_SPACING_Z;
+    const float offsetZ = LAMP_OFFSET_Z;
+
 
     // How far from the player a lamp can be and still get a real light
     const float lightRangeZ = 180.0f;  // lamps within +/- 180 on Z get lit
@@ -844,10 +1130,12 @@ void display() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
     setupCamera();
+    drawSky();
     applyLampLight();
     updateLamp(0.0f);
 
     drawStreet();
+    drawLampLightPools();
     drawBuildings();
     drawLamps();
     drawCars();
@@ -855,7 +1143,7 @@ void display() {
     //debugDrawTrashAtOrigin();
     //drawTrashCollisionBoxes();
     //drawCarCollisionBoxes();
-    drawPlayerCollisionBox();
+    //drawPlayerCollisionBox();
     drawCollectibles();
     drawCheckpoint();
     drawPlayer();
@@ -1083,7 +1371,8 @@ void reshape(int w, int h) {
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(60.0, aspect, 1.0, 200.0);
+    gluPerspective(60.0, aspect, 1.0, 3000.0);
+
 
     glMatrixMode(GL_MODELVIEW);
 }
@@ -1167,6 +1456,10 @@ void loadModels() {
     // collectibleModel.Load("models/3ennabeya.3ds");
     // checkpointModel.Load("models/Checkpoint.3ds");
     // buildingModel.Load("models/Building.3ds");
+
+        // Load the shared sky texture used in both levels
+    loadSkyTexture();
+
 }
 
 void initGL() {
@@ -1252,9 +1545,8 @@ bool drBeramRescued = false;
 float rescueAnimationTime = 0.0f;
 
 // Lighting for sunset
-float sunColor[3] = { 1.0f, 0.9f, 0.0f }; // Yellow (start)
-float sunsetProgress = 0.0f; // 0.0 = start, 1.0 = sunset complete
 bool sunsetActive = true;
+
 
 // Time and movement
 int prevTimeMs_L2 = 0;
@@ -1293,8 +1585,7 @@ CollectibleAnim collectibleAnimations[MAX_ANIM_COLLECTIBLES];
 // Model loading flags
 bool modelsLoaded = false;
 
-// Sky texture - ADDED
-GLTexture skyTexture;
+
 
 // ===============================
 // Level 2 Key State Tracking (NEW)
@@ -1450,117 +1741,9 @@ void setupCameraLevel2() {
     }
 }
 
-// Draw sky with sunset gradient and texture - UPDATED for front screen only
-void drawSky() {
-    glDisable(GL_LIGHTING);
 
-    // Use the sky texture if loaded
-    if (skyTexture.texture[0] != 0) {
-        glEnable(GL_TEXTURE_2D);
-        skyTexture.Use(); // Bind the sky texture
 
-        // Use modulate to blend texture with sunset colors
-        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-
-        // Apply sunset tint (more orange/red as sunset progresses)
-        glColor4f(1.0f,
-            1.0f - sunsetProgress * 0.5f,  // Less green
-            1.0f - sunsetProgress * 0.7f,  // Less blue
-            1.0f);
-    }
-    else {
-        // Fallback to solid color gradient if texture not loaded
-        glDisable(GL_TEXTURE_2D);
-
-        // Simple gradient front screen
-        glBegin(GL_QUADS);
-        // Bottom-left (horizon - orange)
-        glColor3f(0.8f + sunsetProgress * 0.2f,
-            0.3f + sunsetProgress * 0.4f,
-            0.1f);
-        glVertex3f(-1500, 0, -2500);
-
-        // Bottom-right
-        glColor3f(0.8f + sunsetProgress * 0.2f,
-            0.3f + sunsetProgress * 0.4f,
-            0.1f);
-        glVertex3f(1500, 0, -2500);
-
-        // Top-right (sky - blue/orange)
-        glColor3f(0.1f,
-            0.2f + sunsetProgress * 0.3f,
-            0.8f - sunsetProgress * 0.7f);
-        glVertex3f(1500, 800, -2500);
-
-        // Top-left
-        glColor3f(0.1f,
-            0.2f + sunsetProgress * 0.3f,
-            0.8f - sunsetProgress * 0.7f);
-        glVertex3f(-1500, 800, -2500);
-        glEnd();
-
-        glEnable(GL_LIGHTING);
-        return;
-    }
-
-    // Draw a large front screen (billboard) far in the distance
-    // This creates a "skybox front" effect
-    float screenWidth = 2000.0f;   // Very wide
-    float screenHeight = 800.0f;   // Very tall
-    float screenDepth = -2500.0f;  // Far away
-
-    glBegin(GL_QUADS);
-
-    // Bottom-left corner (near horizon)
-    // Texture coordinates: bottom of texture at horizon
-    glTexCoord2f(0.0f, 0.7f);
-    glVertex3f(-screenWidth, 0, screenDepth);
-
-    // Bottom-right corner
-    glTexCoord2f(1.0f, 0.7f);
-    glVertex3f(screenWidth, 0, screenDepth);
-
-    // Top-right corner (sky)
-    // Texture coordinates: top of texture at top of screen
-    glTexCoord2f(1.0f, 0.0f);
-    glVertex3f(screenWidth, screenHeight, screenDepth);
-
-    // Top-left corner
-    glTexCoord2f(0.0f, 0.0f);
-    glVertex3f(-screenWidth, screenHeight, screenDepth);
-
-    glEnd();
-
-    // Draw sun on the front screen (as part of the sky texture enhancement)
-    if (sunsetProgress < 0.8f) {
-        glDisable(GL_TEXTURE_2D);
-
-        // Sun position based on sunset progress
-        float sunSize = 25.0f - sunsetProgress * 12.0f;
-        float sunY = 400.0f - sunsetProgress * 300.0f; // Sun goes down
-        float sunX = 500.0f - sunsetProgress * 400.0f; // Sun moves left
-
-        // Draw sun as a glowing sphere
-        glPushMatrix();
-        glTranslatef(sunX, sunY, screenDepth + 5.0f); // Slightly in front of sky
-
-        // Main sun disc
-        glColor3f(sunColor[0], sunColor[1], sunColor[2]);
-        glutSolidSphere(sunSize, 32, 32);
-
-        // Sun glow/halo (larger, semi-transparent)
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glColor4f(sunColor[0], sunColor[1], sunColor[2], 0.3f);
-        glutSolidSphere(sunSize * 1.5f, 24, 24);
-        glDisable(GL_BLEND);
-
-        glPopMatrix();
-    }
-
-    glDisable(GL_TEXTURE_2D);
-    glEnable(GL_LIGHTING);
-}
+    
 
 // Draw Nile River with texture - IMPROVED
 void drawNileRiver() {
@@ -2248,28 +2431,13 @@ void reshapeLevel2(int w, int h) {
 
 // Safe model loading that won't crash if files don't exist
 void loadModelsLevel2() {
-    // COMMENTED OUT - Using glut placeholders instead
-    // The Model_3DS::Load() function is causing file access assertions
+    // Using glut placeholders instead of 3DS models for now
+    modelsLoaded = false;
 
-    // Note: Person B should provide actual 3DS files later
-    // For now, we'll use glutSolidSphere/Cube placeholders
-
-    modelsLoaded = false; // Flag to indicate we're using placeholders
-
-    // Load sky texture - ADDED
-    char skyTexturePath[256];
-    strcpy_s(skyTexturePath, sizeof(skyTexturePath), "textures/blu-sky-3.bmp");
-    skyTexture.Load(skyTexturePath);
-
-    // Set texture wrapping to repeat so it tiles across the sky
-    if (skyTexture.texture[0] != 0) {
-        glBindTexture(GL_TEXTURE_2D, skyTexture.texture[0]);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    }
+    // Load shared sky texture
+    loadSkyTexture();
 }
+
 
 void initGLLevel2() {
     srand((unsigned int)time(NULL));
