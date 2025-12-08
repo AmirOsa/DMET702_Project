@@ -1,12 +1,8 @@
 // ===============================
-// DMET 502 . Team El 3ennab
-// ===============================
-
-// ========================
 // CHOOSE WHICH LEVEL TO RUN
-// ========================
-//#define RUN_LEVEL_2  // Comment this to run Level 1, uncomment to run Level 2
-// ========================
+// ===============================
+#define RUN_LEVEL_2  // Comment this to run Level 1, uncomment to run Level 2
+// ===============================
 
 #pragma warning(disable : 2381)   // ignore 'exit' redefinition from old GLUT vs stdlib
 
@@ -49,76 +45,144 @@ void loadSkyTexture() {
 
 // Draws the textured sky "billboard" in front of the camera.
 // Level 2 will animate sunsetProgress. Level 1 will just see the initial state.
+// Draws the textured sky "skybox" that surrounds the entire scene
 void drawSky() {
     glDisable(GL_LIGHTING);
+    glEnable(GL_TEXTURE_2D);
 
-    // If we have a sky texture . use it
     if (skyTexture.texture[0] != 0) {
-        glEnable(GL_TEXTURE_2D);
         skyTexture.Use(); // bind texture
-
-        // Blend texture with a sunset tint
         glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
 
+        // Apply sunset tint to the entire sky
         glColor4f(
             1.0f,
             1.0f - sunsetProgress * 0.5f,  // reduce green as sun sets
             1.0f - sunsetProgress * 0.7f,  // reduce blue as sun sets
             1.0f
         );
-    }
-    else {
-        // Fallback . simple gradient quad if texture is missing
-        glDisable(GL_TEXTURE_2D);
 
+        // Size of the skybox
+        float skySize = 2000.0f;
+
+        // Draw skybox as a cube surrounding everything
+        // FRONT face (north)
         glBegin(GL_QUADS);
-        // bottom (near horizon)
-        glColor3f(
-            0.8f + sunsetProgress * 0.2f,
-            0.3f + sunsetProgress * 0.4f,
-            0.1f
-        );
-        glVertex3f(-1500, 0, -2500);
-        glVertex3f(1500, 0, -2500);
-
-        // top
-        glColor3f(
-            0.1f,
-            0.2f + sunsetProgress * 0.3f,
-            0.8f - sunsetProgress * 0.7f
-        );
-        glVertex3f(1500, 800, -2500);
-        glVertex3f(-1500, 800, -2500);
+        glTexCoord2f(0.0f, 0.0f); glVertex3f(-skySize, -skySize, -skySize);
+        glTexCoord2f(1.0f, 0.0f); glVertex3f(skySize, -skySize, -skySize);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f(skySize, skySize, -skySize);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f(-skySize, skySize, -skySize);
         glEnd();
 
-        glEnable(GL_LIGHTING);
-        return;
+        // BACK face (south)
+        glBegin(GL_QUADS);
+        glTexCoord2f(1.0f, 0.0f); glVertex3f(-skySize, -skySize, skySize);
+        glTexCoord2f(0.0f, 0.0f); glVertex3f(skySize, -skySize, skySize);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f(skySize, skySize, skySize);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f(-skySize, skySize, skySize);
+        glEnd();
+
+        // LEFT face (west)
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0f, 0.0f); glVertex3f(-skySize, -skySize, skySize);
+        glTexCoord2f(1.0f, 0.0f); glVertex3f(-skySize, -skySize, -skySize);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f(-skySize, skySize, -skySize);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f(-skySize, skySize, skySize);
+        glEnd();
+
+        // RIGHT face (east)
+        glBegin(GL_QUADS);
+        glTexCoord2f(1.0f, 0.0f); glVertex3f(skySize, -skySize, skySize);
+        glTexCoord2f(0.0f, 0.0f); glVertex3f(skySize, -skySize, -skySize);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f(skySize, skySize, -skySize);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f(skySize, skySize, skySize);
+        glEnd();
+
+        // TOP face (sky)
+        glBegin(GL_QUADS);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f(-skySize, skySize, skySize);
+        glTexCoord2f(0.0f, 0.0f); glVertex3f(-skySize, skySize, -skySize);
+        glTexCoord2f(1.0f, 0.0f); glVertex3f(skySize, skySize, -skySize);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f(skySize, skySize, skySize);
+        glEnd();
+
+        // BOTTOM face (ground - optional, usually not visible)
+        glBegin(GL_QUADS);
+        glTexCoord2f(1.0f, 1.0f); glVertex3f(-skySize, -skySize, skySize);
+        glTexCoord2f(0.0f, 1.0f); glVertex3f(skySize, -skySize, skySize);
+        glTexCoord2f(0.0f, 0.0f); glVertex3f(skySize, -skySize, -skySize);
+        glTexCoord2f(1.0f, 0.0f); glVertex3f(-skySize, -skySize, -skySize);
+        glEnd();
+
+    }
+    else {
+        // Fallback: simple colored skybox if texture is missing
+        glDisable(GL_TEXTURE_2D);
+
+        // Draw all 6 faces with gradient colors
+        float skySize = 2000.0f;
+
+        // Front (north) - blue
+        glBegin(GL_QUADS);
+        glColor3f(0.1f, 0.2f, 0.8f - sunsetProgress * 0.7f);
+        glVertex3f(-skySize, -skySize, -skySize);
+        glVertex3f(skySize, -skySize, -skySize);
+        glColor3f(0.6f, 0.7f, 1.0f - sunsetProgress * 0.7f);
+        glVertex3f(skySize, skySize, -skySize);
+        glVertex3f(-skySize, skySize, -skySize);
+        glEnd();
+
+        // Back (south) - darker blue
+        glBegin(GL_QUADS);
+        glColor3f(0.1f, 0.2f, 0.6f - sunsetProgress * 0.5f);
+        glVertex3f(-skySize, -skySize, skySize);
+        glVertex3f(skySize, -skySize, skySize);
+        glColor3f(0.5f, 0.6f, 0.9f - sunsetProgress * 0.5f);
+        glVertex3f(skySize, skySize, skySize);
+        glVertex3f(-skySize, skySize, skySize);
+        glEnd();
+
+        // Left (west) - purple-blue gradient
+        glBegin(GL_QUADS);
+        glColor3f(0.2f, 0.1f, 0.7f - sunsetProgress * 0.6f);
+        glVertex3f(-skySize, -skySize, skySize);
+        glVertex3f(-skySize, -skySize, -skySize);
+        glColor3f(0.6f, 0.5f, 1.0f - sunsetProgress * 0.6f);
+        glVertex3f(-skySize, skySize, -skySize);
+        glVertex3f(-skySize, skySize, skySize);
+        glEnd();
+
+        // Right (east) - purple-blue gradient
+        glBegin(GL_QUADS);
+        glColor3f(0.2f, 0.1f, 0.7f - sunsetProgress * 0.6f);
+        glVertex3f(skySize, -skySize, skySize);
+        glVertex3f(skySize, -skySize, -skySize);
+        glColor3f(0.6f, 0.5f, 1.0f - sunsetProgress * 0.6f);
+        glVertex3f(skySize, skySize, -skySize);
+        glVertex3f(skySize, skySize, skySize);
+        glEnd();
+
+        // Top (sky) - light blue to orange at sunset
+        glBegin(GL_QUADS);
+        glColor3f(0.6f + sunsetProgress * 0.4f, 0.7f + sunsetProgress * 0.2f, 1.0f);
+        glVertex3f(-skySize, skySize, skySize);
+        glVertex3f(-skySize, skySize, -skySize);
+        glVertex3f(skySize, skySize, -skySize);
+        glVertex3f(skySize, skySize, skySize);
+        glEnd();
     }
 
-    // Draw a big textured screen in the distance
-    float screenWidth = 2000.0f;
-    float screenHeight = 800.0f;
-    float screenDepth = -2500.0f;
-
-    glBegin(GL_QUADS);
-    // bottom
-    glTexCoord2f(0.0f, 0.7f); glVertex3f(-screenWidth, 0, screenDepth);
-    glTexCoord2f(1.0f, 0.7f); glVertex3f(screenWidth, 0, screenDepth);
-    // top
-    glTexCoord2f(1.0f, 0.0f); glVertex3f(screenWidth, screenHeight, screenDepth);
-    glTexCoord2f(0.0f, 0.0f); glVertex3f(-screenWidth, screenHeight, screenDepth);
-    glEnd();
-
-    // Draw the sun as a glowing sphere on that screen
+    // Draw the sun as a glowing sphere in the skybox
     if (sunsetProgress < 0.8f) {
         glDisable(GL_TEXTURE_2D);
 
-        float sunSize = 25.0f - sunsetProgress * 12.0f;
-        float sunY = 400.0f - sunsetProgress * 300.0f;
-        float sunX = 500.0f - sunsetProgress * 400.0f;
+        float sunSize = 40.0f - sunsetProgress * 20.0f;
+        float sunY = 500.0f - sunsetProgress * 300.0f;
+        float sunX = 300.0f - sunsetProgress * 500.0f;
+        float sunZ = -800.0f; // Position sun in the distance
 
         glPushMatrix();
-        glTranslatef(sunX, sunY, screenDepth + 5.0f);
+        glTranslatef(sunX, sunY, sunZ);
 
         // main sun disc
         glColor3f(sunColor[0], sunColor[1], sunColor[2]);
@@ -275,8 +339,8 @@ float playerSpinTime = 0.0f;    // how long we've been spinning (seconds)
 
 // Player hit translation (slide) animation when colliding with obstacles
 bool  playerHitAnimating = false;
-float playerHitTime      = 0.0f;       // seconds since hit
-float playerHitDistance  = 0.0f;       // how far to slide
+float playerHitTime = 0.0f;       // seconds since hit
+float playerHitDistance = 0.0f;       // how far to slide
 
 
 // Checkpoint (No2'et El Tafteesh)
@@ -626,7 +690,7 @@ void setupLevel1() {
 
     // ----- Collectibles (3ennabeyat) -----
     numCollectibles = 50;  // up to MAX_COLLECTIBLES
-    
+
     float colMinZ = streetEndZ + 15.0f;
     float colMaxZ = -5.0f;
 
@@ -656,16 +720,17 @@ void setupLevel1() {
 
         // If we fail to place after many tries, this collectible stays inactive
     }
-        // Init collectible animation state
-        for (int i = 0; i < numCollectibles; ++i) {
-            if (collectibles[i].active) {
-                collectibleScale[i] = 1.0f;      // normal size
-            } else {
-                collectibleScale[i] = 0.0f;      // invisible if not placed
-            }
-            collectibleShrinking[i] = false;
+    // Init collectible animation state
+    for (int i = 0; i < numCollectibles; ++i) {
+        if (collectibles[i].active) {
+            collectibleScale[i] = 1.0f;      // normal size
         }
-    
+        else {
+            collectibleScale[i] = 0.0f;      // invisible if not placed
+        }
+        collectibleShrinking[i] = false;
+    }
+
 
 
     // ----- Checkpoint at far end of street -----
@@ -857,7 +922,7 @@ void drawCars() {
         glPushMatrix();
 
         // Position the car on the ground
-        // Y = 0.0f means “place origin at ground level”
+        // Y = 0.0f means "place origin at ground level"
         // If wheels sink, increase Y slightly to 0.3f or 0.5f
         glTranslatef(c.x, 0.3f, c.z);
 
@@ -928,13 +993,31 @@ void drawCollectibles() {
         float s = baseScale * collectibleScale[i];
         glScalef(s, s, s);
 
+        // ========== DRAW WITH TEXTURES ==========
+        // Enable texturing and lighting
+        glEnable(GL_TEXTURE_2D);
+        glEnable(GL_LIGHTING);
+
+        // Set material properties
+        GLfloat matAmbient[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        GLfloat matDiffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        GLfloat matSpecular[] = { 0.3f, 0.3f, 0.3f, 1.0f };
+        GLfloat matShininess[] = { 20.0f };
+
+        glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, matAmbient);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, matDiffuse);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpecular);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, matShininess);
+
+        // IMPORTANT: Set color to white so textures show correctly
         glColor3f(1.0f, 1.0f, 1.0f);
+
+        // Draw the collectible model with textures
         collectibleModel.Draw();
 
         glPopMatrix();
     }
 }
-
 
 
 
@@ -948,7 +1031,7 @@ void drawCheckpoint() {
     glTranslatef(checkpoint.x, 5.4f, checkpoint.z);
 
     // Rotate to face the player if needed
-    glRotatef(180.0f, 0, 1, 0);   // you can try removing/changing this if it’s backwards
+    glRotatef(180.0f, 0, 1, 0);   // you can try removing/changing this if it's backwards
 
     // Scale the gate – tweak these numbers until it looks good
     glScalef(0.18f, 0.1f, 0.1f);   // try 0.05 / 0.2 etc if it's too big/small
@@ -987,11 +1070,11 @@ void drawLamps() {
 
 // Simple glowing circles on the ground under each lamp
 void drawLampLightPools() {
-    const float lampX   = LAMP_X;
+    const float lampX = LAMP_X;
     const float spacing = LAMP_SPACING_Z;
     const float offsetZ = LAMP_OFFSET_Z;
 
-    const float radius   = 4.0f;
+    const float radius = 4.0f;
     const int   segments = 20;
 
     glDisable(GL_LIGHTING);
@@ -1044,7 +1127,7 @@ void drawPlayer() {
 
     // 💥 Slide backward when hit (no jumping)
     if (playerHitAnimating) {
-        glTranslatef(0.0f, 0.0f, playerHitDistance);  
+        glTranslatef(0.0f, 0.0f, playerHitDistance);
     }
 
     // Face -Z direction
@@ -1102,10 +1185,10 @@ void updateLamp(float deltaTime) {
     // accumulate time for animation
     lampAnimTime += deltaTime;
 
-    const float lampX      = LAMP_X;
+    const float lampX = LAMP_X;
     const float lampHeight = LAMP_HEIGHT;
-    const float spacing    = LAMP_SPACING_Z;
-    const float offsetZ    = LAMP_OFFSET_Z;
+    const float spacing = LAMP_SPACING_Z;
+    const float offsetZ = LAMP_OFFSET_Z;
 
     // How far from the player a lamp can be and still get a real light
     const float lightRangeZ = 180.0f;  // lamps within +/- 180 on Z get lit
@@ -1221,7 +1304,7 @@ void updatePlayerHit(float deltaTime) {
     if (t > 1.0f) t = 1.0f;
 
     // smooth easing: starts fast → slows down
-    float slide = (1.0f - cosf(t * 3.14159f)) * 0.5f;  
+    float slide = (1.0f - cosf(t * 3.14159f)) * 0.5f;
 
     playerHitDistance = slide * 1.2f;    // final slide distance = 1.2 units
 
@@ -1236,9 +1319,9 @@ void updatePlayerSpin(float deltaTime) {
     if (!playerSpinning) return;
 
     const float spinDuration = 0.5f;   // seconds
-    const float spinSpeed    = 720.0f; // degrees per second (2 full spins)
+    const float spinSpeed = 720.0f; // degrees per second (2 full spins)
 
-    playerSpinTime  += deltaTime;
+    playerSpinTime += deltaTime;
     playerSpinAngle += spinSpeed * deltaTime;
 
     // stop spinning after duration
@@ -1351,15 +1434,15 @@ void idle() {
                 // Rebuild player box after we moved the player
                 playerBox = getPlayerAABB();
                 // Start slide animation
-               playerHitAnimating = true;
-               playerHitTime = 0.0f;
-               playerHitDistance = 0.0f;
+                playerHitAnimating = true;
+                playerHitTime = 0.0f;
+                playerHitDistance = 0.0f;
                 break; // only handle one car per frame
             }
         }
 
 
-        
+
         // Player ↔ trash cans
         for (int i = 0; i < numTrashCans; ++i) {
             if (!trashCans[i].active) continue;
@@ -1368,7 +1451,7 @@ void idle() {
 
             if (checkAABBCollision(playerBox, trashBox)) {
                 handleObstacleCollision(trashBox);            // <-- use world-aligned box
-                playerBox = getPlayerAABB();  
+                playerBox = getPlayerAABB();
                 // Start slide animation
                 playerHitAnimating = true;
                 playerHitTime = 0.0f;
@@ -1381,22 +1464,22 @@ void idle() {
 
         // Player ↔ collectibles
 // Player ↔ collectibles
-for (int i = 0; i < numCollectibles; ++i) {
-    if (!collectibles[i].active) continue;
+        for (int i = 0; i < numCollectibles; ++i) {
+            if (!collectibles[i].active) continue;
 
-    if (checkAABBCollision(playerBox, collectibles[i])) {
-        // Stop colliding but start shrink animation
-        collectibles[i].active = false;          // no more collisions
-        collectibleShrinking[i] = true;          // start scaling down
-        score += 10;
+            if (checkAABBCollision(playerBox, collectibles[i])) {
+                // Stop colliding but start shrink animation
+                collectibles[i].active = false;          // no more collisions
+                collectibleShrinking[i] = true;          // start scaling down
+                score += 10;
 
-        // 💫 trigger player spin animation
-        playerSpinning = true;
-        playerSpinTime = 0.0f;      // restart timer
-        playerSpinAngle = 0.0f;     // start from facing forward
-        // TODO: sound if you want
-    }
-}
+                // 💫 trigger player spin animation
+                playerSpinning = true;
+                playerSpinTime = 0.0f;      // restart timer
+                playerSpinAngle = 0.0f;     // start from facing forward
+                // TODO: sound if you want
+            }
+        }
 
 
 
@@ -1420,12 +1503,12 @@ for (int i = 0; i < numCollectibles; ++i) {
             spawnExtraObstacles(10, 10);
         }
     }
-        // 3.6 Update collectible shrinking / rotation animation
-        updateCollectibleAnimations(deltaTime);
-        // Update player spin animation (after collecting)
-updatePlayerSpin(deltaTime);
-// Update player slide animation (after hitting obstacle)
-updatePlayerHit(deltaTime);
+    // 3.6 Update collectible shrinking / rotation animation
+    updateCollectibleAnimations(deltaTime);
+    // Update player spin animation (after collecting)
+    updatePlayerSpin(deltaTime);
+    // Update player slide animation (after hitting obstacle)
+    updatePlayerHit(deltaTime);
 
 
 
@@ -1543,26 +1626,58 @@ void loadModels() {
     playerModel.Load("models/Player.3ds");
     collectibleModel.Load("models/3enabeyat1.3ds");
     checkpointModel.Load("models/gate.3ds");
+
     // ===== Player texture =====
     if (playerModel.numMaterials > 0) {
         char playerTexPath[256];
-        // If you saved as BMP:
         strcpy_s(playerTexPath, sizeof(playerTexPath),
             "textures/Ch24_1001_Diffuse.bmp");
-        // If you kept PNG, use .png here instead.
 
         // Apply same diffuse texture to first material
         playerModel.Materials[0].tex.Load(playerTexPath);
         playerModel.Materials[0].textured = true;
 
-        // If the model has more materials and looks half-white
-        // you can loop and assign the same texture to all:
-        /*
-        for (int i = 0; i < playerModel.numMaterials; ++i) {
+        // Apply to all materials if needed
+        for (int i = 1; i < playerModel.numMaterials; ++i) {
             playerModel.Materials[i].tex.Load(playerTexPath);
             playerModel.Materials[i].textured = true;
         }
-        */
+    }
+
+    // ===== Collectible model textures (Level 1) =====
+    if (collectibleModel.numMaterials > 0) {
+        printf("Level 1: Loading collectible textures...\n");
+
+        // Load your collectible textures
+        char texPath1[256];
+        strcpy_s(texPath1, sizeof(texPath1), "textures/3ennabeyat1.bmp");
+
+        char texPath2[256];
+        strcpy_s(texPath2, sizeof(texPath2), "textures/3ennabeyat2.bmp");
+
+        printf("Level 1 collectible has %d materials\n", collectibleModel.numMaterials);
+
+        // Apply textures to materials
+        for (int i = 0; i < collectibleModel.numMaterials; i++) {
+            if (i == 0) {
+                // First material gets first texture
+                collectibleModel.Materials[i].tex.Load(texPath1);
+                collectibleModel.Materials[i].textured = true;
+                printf("Level 1: Applied texture 1 to material %d\n", i);
+            }
+            else if (i == 1 && collectibleModel.numMaterials > 1) {
+                // Second material gets second texture if it exists
+                collectibleModel.Materials[i].tex.Load(texPath2);
+                collectibleModel.Materials[i].textured = true;
+                printf("Level 1: Applied texture 2 to material %d\n", i);
+            }
+            else {
+                // Any additional materials default to first texture
+                collectibleModel.Materials[i].tex.Load(texPath1);
+                collectibleModel.Materials[i].textured = true;
+                printf("Level 1: Applied texture 1 to material %d (default)\n", i);
+            }
+        }
     }
 
     buildingModel.Load("models/cottage.3ds");
@@ -1606,17 +1721,8 @@ void loadModels() {
         // Some 3DS models may have multiple objects sharing materials
     }
 
-    // Person B: fill correct paths to .3ds files and handle textures
-    // Example:
-    // playerModel.Load("models/Player.3ds");
-    // carModel.Load("models/Car.3ds");
-    // collectibleModel.Load("models/3ennabeya.3ds");
-    // checkpointModel.Load("models/Checkpoint.3ds");
-    // buildingModel.Load("models/Building.3ds");
-
-        // Load the shared sky texture used in both levels
+    // Load the shared sky texture used in both levels
     loadSkyTexture();
-
 }
 
 void initGL() {
@@ -1644,7 +1750,7 @@ void initGL() {
 #endif // RUN_LEVEL_2 - End of Level 1 code
 
 // ===================================================================
-// LEVEL 2 CODE STARTS HERE - Amir's Work (FIXED)
+// LEVEL 2 CODE STARTS HERE - Amir's Work (FIXED VERSION)
 // ===================================================================
 #ifdef RUN_LEVEL_2
 
@@ -1657,6 +1763,18 @@ struct AABB_L2 {
     float x, y, z;   // 3D position
     float halfW, halfD, halfH; // 3D dimensions
     bool active;
+
+    // NEW: Bird patrol variables
+    float patrolStartX;   // Left patrol point
+    float patrolEndX;     // Right patrol point
+    float patrolSpeed;    // Movement speed
+    bool movingRight;     // Direction flag
+    float patrolY;        // Fixed height for patrol
+
+    // NEW: Vertical bobbing variables
+    float verticalBobAmplitude; // How much up/down movement
+    float verticalBobSpeed;     // How fast the bobbing is
+    float bobPhase;             // Phase offset for each bird
 };
 
 // ===============================
@@ -1668,9 +1786,12 @@ float playerX_L2 = 0.0f;      // side movement
 float playerY_L2 = 25.0f;     // flying height (Y-axis)
 float playerZ_L2 = 0.0f;      // forward movement (flying direction, negative Z)
 float playerSpeed_L2 = 15.0f; // Forward speed
+float playerRollAngle = 0.0f; // Banking angle for visual effect
+float playerPitchAngle = 0.0f; // Pitch angle for visual effect
+int playerLives = 5;
 
 // Flying boundaries
-const float riverWidth = 100.0f;
+const float riverWidth = 50.0f;
 const float riverMinX = -riverWidth / 2;
 const float riverMaxX = riverWidth / 2;
 const float minHeight = 10.0f;
@@ -1704,6 +1825,10 @@ float rescueAnimationTime = 0.0f;
 // Lighting for sunset
 bool sunsetActive = true;
 
+// Animated lights
+float lightOrbitAngle = 0.0f;
+float lightOrbitRadius = 100.0f;
+float lightOrbitHeight = 80.0f;
 
 // Time and movement
 int prevTimeMs_L2 = 0;
@@ -1717,20 +1842,27 @@ const int level2DurationMs = 120000; // 120 seconds for flying level
 int level2StartTimeMs = 0;
 int remainingTime_L2 = level2DurationMs;
 
-// Models - Use placeholders since 3DS files don't exist
-// Model_3DS playerModel_L2; // Comment out - using glut placeholders
-// Model_3DS birdModel;
-// Model_3DS collectibleModel_L2;
-// Model_3DS drBeramModel;
+// Models - LOADED LIKE LEVEL 1
+Model_3DS playerModel_L2;
+Model_3DS collectibleModel_L2;  // DECLARE COLLECTIBLE MODEL
+Model_3DS birdModel_L2;  // BIRD MODEL
+Model_3DS drBeramModel;
+
+// Ground textures for Level 2
+GLTexture grassTexture;      // "Grass.bmp" - for area next to river
+GLTexture concrMetTexture;   // "ConcrMet.bmp" - for outer area (concrete/metallic)
+GLTexture riverTexture;      // "River.bmp" - for the river water
 
 // Animation states
 float collectibleRotation = 0.0f;
 float birdFlapAnimation = 0.0f;
 float heroWingFlap = 0.0f;
+const float FORWARD_TILT_ANGLE = 40.0f; // Degrees to tilt forward (adjust as needed)
 
 // Collectible collection animation
 struct CollectibleAnim {
     int index;
+    float x, y, z;
     float scale;
     float rotation;
     float alpha;
@@ -1739,15 +1871,21 @@ struct CollectibleAnim {
 const int MAX_ANIM_COLLECTIBLES = 10;
 CollectibleAnim collectibleAnimations[MAX_ANIM_COLLECTIBLES];
 
-// Model loading flags
-bool modelsLoaded = false;
+// Player animations
+bool playerSpinning_L2 = false;
+float playerSpinAngle_L2 = 0.0f;
+float playerSpinTime_L2 = 0.0f;
 
-
+// Player hit animation
+bool playerHit_L2 = false;
+float playerHitTime_L2 = 0.0f;
+float playerHitDistance_L2 = 0.0f;
 
 // ===============================
-// Level 2 Key State Tracking (NEW)
+// Level 2 Key State Tracking
 // ===============================
 bool keyStates[256] = { false }; // Track all key states
+bool specialKeyStates[256] = { false }; // For special keys
 
 // ===============================
 // Level 2 Helper Functions
@@ -1776,23 +1914,36 @@ AABB_L2 getPlayerAABB_L2() {
     return p;
 }
 
-// Handle collision with bird
+// Handle collision with bird - UPDATED FOR LIVES SYSTEM
 void handleBirdCollision(int birdIndex) {
+    // Deduct a life
+    playerLives--;
+
     // Deduct points
     score_L2 -= 15;
     if (score_L2 < 0) score_L2 = 0;
 
     // Push back and down
-    playerZ_L2 += 10.0f;
-    playerY_L2 -= 5.0f;
-    verticalSpeed = 0.0f; // Strong downward push
+    playerZ_L2 += 8.0f;
+    playerY_L2 -= 4.0f;
+    verticalSpeed = -5.0f; // Strong downward push
 
-    // Deactivate bird
+    // Start hit animation
+    playerHit_L2 = true;
+    playerHitTime_L2 = 0.0f;
+
+    // Deactivate bird (so it doesn't keep hitting)
     birds[birdIndex].active = false;
 
     // Clamp position
     if (playerY_L2 < minHeight) playerY_L2 = minHeight;
     if (playerY_L2 > maxHeight) playerY_L2 = maxHeight;
+
+    // Check if game over
+    if (playerLives <= 0) {
+        playerLives = 0;
+        gameState_L2 = GAME_LOST;
+    }
 }
 
 // Add collectible animation
@@ -1800,6 +1951,9 @@ void addCollectibleAnimation(int index, float x, float y, float z) {
     for (int i = 0; i < MAX_ANIM_COLLECTIBLES; i++) {
         if (!collectibleAnimations[i].active) {
             collectibleAnimations[i].active = true;
+            collectibleAnimations[i].x = x;
+            collectibleAnimations[i].y = y;
+            collectibleAnimations[i].z = z;
             collectibleAnimations[i].scale = 1.0f;
             collectibleAnimations[i].rotation = 0.0f;
             collectibleAnimations[i].alpha = 1.0f;
@@ -1807,6 +1961,11 @@ void addCollectibleAnimation(int index, float x, float y, float z) {
             break;
         }
     }
+
+    // Start player spin animation
+    playerSpinning_L2 = true;
+    playerSpinTime_L2 = 0.0f;
+    playerSpinAngle_L2 = 0.0f;
 }
 
 // Setup Level 2 - Flying over Nile
@@ -1817,10 +1976,14 @@ void setupLevel2() {
     playerZ_L2 = riverStartZ;
     playerSpeed_L2 = 20.0f;
     score_L2 = 0;
+    playerLives = 5;
     sunsetProgress = 0.0f;
     sunsetActive = true;
     drBeramRescued = false;
     rescueAnimationTime = 0.0f;
+    lightOrbitAngle = 0.0f;
+    playerRollAngle = 0.0f;
+    playerPitchAngle = 0.0f;
 
     // Reset sunset color to yellow
     sunColor[0] = 1.0f; // Red
@@ -1838,22 +2001,36 @@ void setupLevel2() {
         flyingCollectibles[i].x = randRange(riverMinX + 5, riverMaxX - 5);
         flyingCollectibles[i].y = randRange(15, 40); // Different heights
         flyingCollectibles[i].z = riverStartZ - 50.0f - (i * 35.0f); // Spread along Z
-        flyingCollectibles[i].halfW = 1.5f;
-        flyingCollectibles[i].halfH = 1.5f;
-        flyingCollectibles[i].halfD = 1.5f;
+        flyingCollectibles[i].halfW = 2.5f;
+        flyingCollectibles[i].halfH = 2.5f;
+        flyingCollectibles[i].halfD = 2.5f;
         flyingCollectibles[i].active = true;
     }
 
-    // Setup birds (obstacles)
+    // Setup birds (obstacles) - UPDATED FOR PATROL WITH DIFFERENT HEIGHTS
     numBirds = 12;
     for (int i = 0; i < numBirds; i++) {
-        birds[i].x = randRange(riverMinX + 10, riverMaxX - 10);
-        birds[i].y = randRange(20, 35);
+        // RANDOM HEIGHTS between 15 and 45 units
+        birds[i].y = randRange(15.0f, 45.0f);
+        birds[i].x = randRange(riverMinX + 20, riverMaxX - 20);
         birds[i].z = riverStartZ - 80.0f - (i * 60.0f);
-        birds[i].halfW = 3.0f;
-        birds[i].halfH = 2.0f;
-        birds[i].halfD = 4.0f;
+        birds[i].halfW = 5.0f;  // Increased for larger birds
+        birds[i].halfH = 4.0f;  // Increased for larger birds
+        birds[i].halfD = 6.0f;  // Increased for larger birds
         birds[i].active = true;
+
+        // NEW: Setup patrol behavior with height variation
+        float patrolLength = randRange(15.0f, 40.0f); // Random line length
+        birds[i].patrolStartX = birds[i].x - patrolLength / 2;
+        birds[i].patrolEndX = birds[i].x + patrolLength / 2;
+        birds[i].patrolSpeed = randRange(5.0f, 15.0f); // Random speed
+        birds[i].movingRight = (rand() % 2 == 0); // Random starting direction
+        birds[i].patrolY = birds[i].y; // Store original height
+
+        // NEW: Random vertical patrol amplitude (some birds bob more than others)
+        birds[i].verticalBobAmplitude = randRange(0.5f, 3.0f);
+        birds[i].verticalBobSpeed = randRange(0.5f, 2.0f);
+        birds[i].bobPhase = randRange(0.0f, 360.0f); // Random starting phase
     }
 
     // Setup Dr. Beram (target) - at the end of the river
@@ -1881,14 +2058,15 @@ void setupCameraLevel2() {
     }
     else { // THIRD_PERSON
         // Third person: behind and above, always looking at player
+        // Camera position BEHIND the player (positive Z offset since player moves in -Z)
         float camX = playerX_L2;
         float camY = playerY_L2 + thirdPersonHeight_L2;
         float camZ = playerZ_L2 + thirdPersonDist_L2;
 
-        // Look at point slightly ahead of player for better view
+        // Look at the player (or slightly ahead for better view)
         float lookAtX = playerX_L2;
         float lookAtY = playerY_L2 + 2.0f;
-        float lookAtZ = playerZ_L2 - 10.0f;
+        float lookAtZ = playerZ_L2 - 5.0f; // Look slightly ahead
 
         gluLookAt(
             camX, camY, camZ,        // Camera position (behind and above)
@@ -1898,162 +2076,378 @@ void setupCameraLevel2() {
     }
 }
 
-
-
-    
-
-// Draw Nile River with texture - IMPROVED
+// Draw Nile River with textured land on both sides
+// Grass: immediate area next to river
+// Street: everything beyond grass
 void drawNileRiver() {
     glEnable(GL_TEXTURE_2D);
-    glDisable(GL_LIGHTING);
 
-    // River water color with sunset reflection
-    glColor3f(0.1f, 0.3f + sunsetProgress * 0.3f, 0.6f);
+    // Define zones
+    float riverEdgeLeft = -150.0f;    // Left edge of river
+    float riverEdgeRight = 150.0f;    // Right edge of river
+    float grassWidth = 75.0f;        // Width of grass strip on each side
+    float landFarLeft = -2000.0f;     // Far left edge of land
+    float landFarRight = 2000.0f;     // Far right edge of land
+
+    float grassLeftStart = riverEdgeLeft - grassWidth;   // -250
+    float grassLeftEnd = riverEdgeLeft;                  // -150
+    float grassRightStart = riverEdgeRight;              // 150
+    float grassRightEnd = riverEdgeRight + grassWidth;   // 250
+
+    float textureScale = 0.02f;  // Adjust for proper tiling
+
+    // ========== RIVER WATER WITH TEXTURE ==========
+    glDisable(GL_LIGHTING);  // Disable lighting for water for better texture visibility
+
+    if (riverTexture.texture[0] != 0) {
+        riverTexture.Use();
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+
+        // Apply sunset tint to river texture
+        glColor3f(
+            1.0f,
+            1.0f - sunsetProgress * 0.3f,
+            1.0f - sunsetProgress * 0.5f
+        );
+    }
+    else {
+        // Fallback color if texture fails to load
+        glColor3f(0.1f, 0.3f + sunsetProgress * 0.3f, 0.6f);
+    }
+
+    // Calculate texture coordinates based on player position for scrolling effect
+    float texOffset = -playerZ_L2 * 0.001f; // Scrolling effect as player flies
 
     glBegin(GL_QUADS);
-    // River surface
-    glVertex3f(-200, 0, riverEndZ);
-    glVertex3f(200, 0, riverEndZ);
-    glVertex3f(200, 0, riverStartZ + 100);
-    glVertex3f(-200, 0, riverStartZ + 100);
+    // Bottom-left
+    glTexCoord2f(0.0f + texOffset, 0.0f);
+    glVertex3f(riverEdgeLeft, 0, riverEndZ);
+
+    // Bottom-right
+    glTexCoord2f(3.0f + texOffset, 0.0f); // 3.0 for repeating pattern
+    glVertex3f(riverEdgeRight, 0, riverEndZ);
+
+    // Top-right
+    glTexCoord2f(3.0f + texOffset, 10.0f); // 10.0 for depth
+    glVertex3f(riverEdgeRight, 0, riverStartZ + 100);
+
+    // Top-left
+    glTexCoord2f(0.0f + texOffset, 10.0f);
+    glVertex3f(riverEdgeLeft, 0, riverStartZ + 100);
     glEnd();
 
-    // River banks
-    glColor3f(0.5f, 0.4f, 0.2f);
+    // ========== GRASS AREA (Grass.bmp) - ONE STRIP NEXT TO RIVER ==========
+    if (grassTexture.texture[0] != 0) {
+        grassTexture.Use();
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    }
+
+    glColor3f(1.0f, 1.0f, 1.0f); // White for texture
+
+    // LEFT SIDE GRASS (-250 to -150)
     glBegin(GL_QUADS);
-    // Left bank
-    glVertex3f(-250, 0, riverEndZ);
-    glVertex3f(-200, 0, riverEndZ);
-    glVertex3f(-200, 0, riverStartZ + 100);
-    glVertex3f(-250, 0, riverStartZ + 100);
+    // Bottom-left
+    glTexCoord2f(0.0f, (riverEndZ - riverStartZ - 100) * textureScale);
+    glVertex3f(grassLeftStart, 0, riverEndZ);
+    // Bottom-right
+    glTexCoord2f(grassWidth * textureScale, (riverEndZ - riverStartZ - 100) * textureScale);
+    glVertex3f(grassLeftEnd, 0, riverEndZ);
+    // Top-right
+    glTexCoord2f(grassWidth * textureScale, 0.0f);
+    glVertex3f(grassLeftEnd, 0, riverStartZ + 100);
+    // Top-left
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex3f(grassLeftStart, 0, riverStartZ + 100);
+    glEnd();
+
+    // RIGHT SIDE GRASS (150 to 250)
+    glBegin(GL_QUADS);
+    // Bottom-left
+    glTexCoord2f(0.0f, (riverEndZ - riverStartZ - 100) * textureScale);
+    glVertex3f(grassRightStart, 0, riverEndZ);
+    // Bottom-right
+    glTexCoord2f(grassWidth * textureScale, (riverEndZ - riverStartZ - 100) * textureScale);
+    glVertex3f(grassRightEnd, 0, riverEndZ);
+    // Top-right
+    glTexCoord2f(grassWidth * textureScale, 0.0f);
+    glVertex3f(grassRightEnd, 0, riverStartZ + 100);
+    // Top-left
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex3f(grassRightStart, 0, riverStartZ + 100);
+    glEnd();
+
+    // ========== CONCRETE AREA (ConcrMet.bmp) - EVERYTHING ELSE ==========
+    if (concrMetTexture.texture[0] != 0) {
+        concrMetTexture.Use();
+        glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    }
+
+    glColor3f(1.0f, 1.0f, 1.0f); // White for texture
+
+    // LEFT SIDE STREET (-2000 to -250)
+    glBegin(GL_QUADS);
+    // Bottom-left
+    glTexCoord2f(0.0f, (riverEndZ - riverStartZ - 100) * textureScale);
+    glVertex3f(landFarLeft, 0, riverEndZ);
+    // Bottom-right
+    glTexCoord2f((grassLeftStart - landFarLeft) * textureScale, (riverEndZ - riverStartZ - 100) * textureScale);
+    glVertex3f(grassLeftStart, 0, riverEndZ);
+    // Top-right
+    glTexCoord2f((grassLeftStart - landFarLeft) * textureScale, 0.0f);
+    glVertex3f(grassLeftStart, 0, riverStartZ + 100);
+    // Top-left
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex3f(landFarLeft, 0, riverStartZ + 100);
+    glEnd();
+
+    // RIGHT SIDE STREET (250 to 2000)
+    glBegin(GL_QUADS);
+    // Bottom-left
+    glTexCoord2f(0.0f, (riverEndZ - riverStartZ - 100) * textureScale);
+    glVertex3f(grassRightEnd, 0, riverEndZ);
+    // Bottom-right
+    glTexCoord2f((landFarRight - grassRightEnd) * textureScale, (riverEndZ - riverStartZ - 100) * textureScale);
+    glVertex3f(landFarRight, 0, riverEndZ);
+    // Top-right
+    glTexCoord2f((landFarRight - grassRightEnd) * textureScale, 0.0f);
+    glVertex3f(landFarRight, 0, riverStartZ + 100);
+    // Top-left
+    glTexCoord2f(0.0f, 0.0f);
+    glVertex3f(grassRightEnd, 0, riverStartZ + 100);
+    glEnd();
+
+    // ========== RIVER BANKS (OPTIONAL DARKER STRIP) ==========
+    glDisable(GL_TEXTURE_2D);
+    glColor3f(0.5f, 0.4f, 0.2f);
+
+    // Left bank (transition between river and grass)
+    glBegin(GL_QUADS);
+    glVertex3f(-180, 0, riverEndZ);
+    glVertex3f(-150, 0, riverEndZ);
+    glVertex3f(-150, 0, riverStartZ + 100);
+    glVertex3f(-180, 0, riverStartZ + 100);
+    glEnd();
+
     // Right bank
-    glVertex3f(200, 0, riverEndZ);
-    glVertex3f(250, 0, riverEndZ);
-    glVertex3f(250, 0, riverStartZ + 100);
-    glVertex3f(200, 0, riverStartZ + 100);
+    glBegin(GL_QUADS);
+    glVertex3f(150, 0, riverEndZ);
+    glVertex3f(180, 0, riverEndZ);
+    glVertex3f(180, 0, riverStartZ + 100);
+    glVertex3f(150, 0, riverStartZ + 100);
     glEnd();
 
     glEnable(GL_LIGHTING);
     glDisable(GL_TEXTURE_2D);
 }
 
-// Draw flying collectibles (3ennabeyat) with animation
+// Draw flying collectibles (3ennabeyat) with animation - USING REAL TEXTURES
 void drawFlyingCollectibles() {
-    collectibleRotation += 2.0f;
-    if (collectibleRotation > 360.0f) collectibleRotation -= 360.0f;
+    static float vibrationOffset = 0.0f;
+    static float vibrationTimer = 0.0f;
 
-    glColor3f(1.0f, 0.0f, 0.0f); // Red for 3ennab
-    glEnable(GL_COLOR_MATERIAL);
+    // Update vibration timer
+    vibrationTimer += 0.1f;
+    if (vibrationTimer > 360.0f) vibrationTimer -= 360.0f;
+
+    // Calculate gentle up/down vibration
+    vibrationOffset = sin(vibrationTimer * 3.14159f / 180.0f) * 1.5f; // 1.5 units up/down
 
     for (int i = 0; i < numFlyingCollectibles; i++) {
         if (!flyingCollectibles[i].active) continue;
 
         glPushMatrix();
+
+        // Base position
         glTranslatef(flyingCollectibles[i].x,
             flyingCollectibles[i].y,
             flyingCollectibles[i].z);
 
-        // Rotating animation
-        glRotatef(collectibleRotation, 0, 1, 0);
+        // Gentle up/down vibration (different for each collectible)
+        float individualVibe = sin((vibrationTimer + i * 20.0f) * 3.14159f / 180.0f) * 0.5f;
+        glTranslatef(0.0f, vibrationOffset + individualVibe, 0.0f);
 
-        // Draw as a shiny red gem
-        glutSolidSphere(2.0, 16, 16);
+        // Very subtle rotation - just enough to make it interesting
+        float subtleRotate = sin((vibrationTimer + i * 10.0f) * 3.14159f / 180.0f) * 3.0f;
+        glRotatef(subtleRotate, 0, 1, 0);
 
-        // Add a glow effect
-        glDisable(GL_LIGHTING);
-        glColor4f(1.0f, 0.3f, 0.3f, 0.5f);
-        glutSolidSphere(2.5, 12, 12);
+        // Small side-to-side wobble
+        float wobble = sin((vibrationTimer * 0.7f + i * 15.0f) * 3.14159f / 180.0f) * 0.5f;
+        glRotatef(wobble, 1, 0, 0);
+
+        // Draw 3ennabeyat model with REAL TEXTURES
+        float baseScale = 1.5f;  // Enlarged size
+        glScalef(baseScale, baseScale, baseScale);
+
+        // ========== DRAW TEXTURED MODEL ==========
+        // Enable texturing and lighting
+        glEnable(GL_TEXTURE_2D);
         glEnable(GL_LIGHTING);
+
+        // Set material properties to make textures bright
+        GLfloat matAmbient[] = { 1.0f, 1.0f, 1.0f, 1.0f }; // Full white ambient for bright textures
+        GLfloat matDiffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        GLfloat matSpecular[] = { 0.3f, 0.3f, 0.3f, 1.0f }; // Low specular to not overpower texture
+        GLfloat matShininess[] = { 20.0f };
+
+        glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, matAmbient);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, matDiffuse);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpecular);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, matShininess);
+
+        // IMPORTANT: Set color to white so textures show correctly
+        glColor3f(1.0f, 1.0f, 1.0f);
+
+        // Draw the collectible model (textures are already loaded in loadModelsLevel2)
+        collectibleModel_L2.Draw();
+
+        // ========== END TEXTURED MODEL ==========
 
         glPopMatrix();
     }
 
-    // Draw collection animations
+    // Draw collection animations (particle effects when collected)
     glDisable(GL_LIGHTING);
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
     for (int i = 0; i < MAX_ANIM_COLLECTIBLES; i++) {
         if (collectibleAnimations[i].active) {
-            int idx = collectibleAnimations[i].index;
-            if (idx >= 0 && idx < numFlyingCollectibles) {
-                glPushMatrix();
-                glTranslatef(flyingCollectibles[idx].x,
-                    flyingCollectibles[idx].y,
-                    flyingCollectibles[idx].z);
+            glPushMatrix();
+            glTranslatef(collectibleAnimations[i].x,
+                collectibleAnimations[i].y,
+                collectibleAnimations[i].z);
 
-                // Scale down and fade out animation
-                collectibleAnimations[i].scale *= 0.9f;
-                collectibleAnimations[i].rotation += 10.0f;
-                collectibleAnimations[i].alpha *= 0.8f;
+            // Add vibration to collection animation too
+            float animVibe = sin((vibrationTimer + i) * 3.14159f / 180.0f) * 0.3f;
+            glTranslatef(0.0f, animVibe, 0.0f);
 
-                glRotatef(collectibleAnimations[i].rotation, 0, 1, 0);
-                glScalef(collectibleAnimations[i].scale,
-                    collectibleAnimations[i].scale,
-                    collectibleAnimations[i].scale);
+            // Scale down and fade out animation
+            collectibleAnimations[i].scale *= 0.9f;
+            collectibleAnimations[i].rotation += 10.0f;
+            collectibleAnimations[i].alpha *= 0.8f;
 
-                glColor4f(1.0f, 0.0f, 0.0f, collectibleAnimations[i].alpha);
-                glutSolidSphere(2.0, 12, 12);
+            glRotatef(collectibleAnimations[i].rotation, 0, 1, 0);
+            glScalef(collectibleAnimations[i].scale,
+                collectibleAnimations[i].scale,
+                collectibleAnimations[i].scale);
 
-                glPopMatrix();
+            // Draw shrinking collectible with gold color
+            glColor4f(1.0f, 0.8f, 0.0f, collectibleAnimations[i].alpha); // Gold color
+            glutSolidSphere(3.0, 12, 12);
 
-                if (collectibleAnimations[i].alpha < 0.1f) {
-                    collectibleAnimations[i].active = false;
-                }
+            // Add particle effect
+            glColor4f(1.0f, 1.0f, 0.5f, collectibleAnimations[i].alpha * 0.5f); // Light gold
+            glutSolidSphere(3.5, 8, 8);
+
+            glPopMatrix();
+
+            if (collectibleAnimations[i].alpha < 0.1f) {
+                collectibleAnimations[i].active = false;
             }
         }
     }
+
+    glDisable(GL_BLEND);
     glEnable(GL_LIGHTING);
-    glDisable(GL_COLOR_MATERIAL);
 }
 
-// Draw birds with flapping animation
+// Draw birds using the Bird_Level2.3ds model with patrol logic - FIXED FLICKERING
 void drawBirds() {
-    birdFlapAnimation += 5.0f;
-    if (birdFlapAnimation > 360.0f) birdFlapAnimation -= 360.0f;
+    // Update flapping animation
+    static float wingFlapTimer = 0.0f;
+    wingFlapTimer += 0.1f;
+    if (wingFlapTimer > 360.0f) wingFlapTimer -= 360.0f;
 
-    float flapAngle = sin(birdFlapAnimation * 3.14159f / 180.0f) * 20.0f;
+    // ====== SAVE CURRENT STATE ======
+    GLboolean depthTest, blendEnabled;
+    glGetBooleanv(GL_DEPTH_TEST, &depthTest);
+    glGetBooleanv(GL_BLEND, &blendEnabled);
 
-    glColor3f(0.3f, 0.3f, 0.3f); // Gray birds
-    glEnable(GL_COLOR_MATERIAL);
+    // Ensure depth test is ON and blending is OFF for birds
+    glEnable(GL_DEPTH_TEST);
+    glDisable(GL_BLEND); // Disable blending to avoid transparency issues
+
+    // ====== CRITICAL FIX: ENABLE POLYGON OFFSET ======
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(2.0f, 3.0f); // Adjust these values as needed
 
     for (int i = 0; i < numBirds; i++) {
         if (!birds[i].active) continue;
 
         glPushMatrix();
-        glTranslatef(birds[i].x, birds[i].y, birds[i].z);
 
-        // Flapping animation
-        glRotatef(flapAngle, 1, 0, 0);
+        // Position the bird with slight Z offset to prevent flickering
+        float zOffset = 0.05f * (i % 10); // Small unique offset for each bird
+        glTranslatef(birds[i].x, birds[i].y, birds[i].z + zOffset);
 
-        // Body
-        glutSolidSphere(2.0, 10, 10);
+        // Face direction of movement (patrol direction)
+        if (birds[i].movingRight) {
+            glRotatef(90.0f, 0, 1, 0); // Face right (+X)
+        }
+        else {
+            glRotatef(-90.0f, 0, 1, 0); // Face left (-X)
+        }
 
-        // Head
-        glPushMatrix();
-        glTranslatef(0, 0.5f, -2.5f);
-        glutSolidSphere(1.0, 8, 8);
-        glPopMatrix();
+        // Add slight upward tilt for flying look
+        glRotatef(-10.0f, 1, 0, 0);
 
-        // Wings
-        glDisable(GL_LIGHTING);
-        glColor3f(0.2f, 0.2f, 0.2f);
-        glBegin(GL_TRIANGLES);
-        // Left wing
-        glVertex3f(-3.0f, 0, 0);
-        glVertex3f(-5.0f, 0, -3.0f);
-        glVertex3f(-3.0f, 0, -2.0f);
-        // Right wing
-        glVertex3f(3.0f, 0, 0);
-        glVertex3f(5.0f, 0, -3.0f);
-        glVertex3f(3.0f, 0, -2.0f);
-        glEnd();
+        // Wing flapping animation based on movement
+        float flapIntensity = 25.0f;
+        float flapSpeed = birds[i].patrolSpeed * 0.3f;
+
+        // Wing flapping - more pronounced animation
+        float wingFlap = sin(wingFlapTimer * flapSpeed + i) * flapIntensity;
+        glRotatef(wingFlap, 1, 0, 0);
+
+        // ====== BIRD SCALE ======
+        float baseScale = 2.0f; // Adjust this value
+
+        // Size variation based on height - higher birds are slightly larger
+        float heightRatio = (birds[i].y - minHeight) / (maxHeight - minHeight);
+        float sizeVariation = 0.8f + heightRatio * 0.4f;
+
+        // Apply scale
+        float finalScale = baseScale * sizeVariation;
+        glScalef(finalScale, finalScale, finalScale);
+
+        // ====== IMPORTANT: DISABLE ALPHA TEST AND BLENDING ======
+        glDisable(GL_ALPHA_TEST);
+        glDisable(GL_BLEND);
+
+        // Enable texturing and lighting
+        glEnable(GL_TEXTURE_2D);
         glEnable(GL_LIGHTING);
+
+        // Set material properties
+        GLfloat matAmbient[] = { 1.0f, 1.0f, 1.0f, 1.0f }; // Full white ambient
+        GLfloat matDiffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        GLfloat matSpecular[] = { 0.5f, 0.5f, 0.5f, 1.0f }; // Reduced specular
+        GLfloat matShininess[] = { 30.0f };
+
+        glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, matAmbient);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, matDiffuse);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpecular);
+        glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, matShininess);
+
+        // Force solid color (no transparency)
+        glColor4f(1.0f, 1.0f, 1.0f, 1.0f); // Full alpha
+
+        // ====== DRAW BIRD MODEL WITH DEPTH MASK ENABLED ======
+        glDepthMask(GL_TRUE); // Ensure depth writing is enabled
+        birdModel_L2.Draw();
 
         glPopMatrix();
     }
 
-    glDisable(GL_COLOR_MATERIAL);
+    // ====== RESTORE POLYGON OFFSET STATE ======
+    glDisable(GL_POLYGON_OFFSET_FILL);
+
+    // ====== RESTORE PREVIOUS STATE ======
+    if (!depthTest) glDisable(GL_DEPTH_TEST);
+    if (blendEnabled) glEnable(GL_BLEND);
 }
 
-// Draw Dr. Beram with rescue animation
+// Draw Dr. Beram with rescue animation - USING 3D MODEL
 void drawDrBeram() {
     if (!drBeram.active && !drBeramRescued) return;
 
@@ -2063,123 +2457,167 @@ void drawDrBeram() {
         // Rescue animation: float up with player
         float animY = drBeram.y + rescueAnimationTime * 5.0f;
         glTranslatef(playerX_L2, playerY_L2 + 5.0f + animY, playerZ_L2 - 5.0f);
-        glColor3f(0.0f, 1.0f, 0.0f); // Bright green when rescued
+        
+        // Add rotation when rescued for visual effect
+        glRotatef(rescueAnimationTime * 100.0f, 0, 1, 0);
+        
+        // Slightly scale up when rescued
+        float rescueScale = 1.0f + rescueAnimationTime * 0.2f;
+        glScalef(rescueScale, rescueScale, rescueScale);
     }
     else {
+        // Original position (waiting to be rescued)
         glTranslatef(drBeram.x, drBeram.y, drBeram.z);
-        glColor3f(0.0f, 0.8f, 0.0f); // Green for visibility
+        
+        // Add gentle floating animation
+        float floatOffset = sinf(rescueAnimationTime * 2.0f) * 1.5f;
+        glTranslatef(0.0f, floatOffset, 0.0f);
+        
+        // Slow rotation to make him look alive
+        glRotatef(rescueAnimationTime * 50.0f, 0, 1, 0);
     }
 
-    // Draw as a person shape
-    // Body
-    glPushMatrix();
-    glScalef(1.5f, 4.0f, 1.0f);
-    glutSolidCube(1.0);
-    glPopMatrix();
-
-    // Head
-    glPushMatrix();
-    glTranslatef(0, 2.5f, 0);
-    glutSolidSphere(1.0, 12, 12);
-    glPopMatrix();
-
-    // Arms
-    glBegin(GL_LINES);
-    glVertex3f(0, 1.5f, 0);
-    glVertex3f(2.0f, 1.5f, 0);
-    glVertex3f(0, 1.5f, 0);
-    glVertex3f(-2.0f, 1.5f, 0);
-    glEnd();
-
-    // Legs
-    glBegin(GL_LINES);
-    glVertex3f(0, -1.5f, 0);
-    glVertex3f(1.0f, -3.0f, 0);
-    glVertex3f(0, -1.5f, 0);
-    glVertex3f(-1.0f, -3.0f, 0);
-    glEnd();
-
-    glPopMatrix();
-}
-
-// Draw flying player with wing flap animation
-void drawPlayerLevel2() {
-    heroWingFlap += 10.0f;
-    if (heroWingFlap > 360.0f) heroWingFlap -= 360.0f;
-
-    float wingFlap = sin(heroWingFlap * 3.14159f / 180.0f) * 15.0f;
-
-    glPushMatrix();
-    glTranslatef(playerX_L2, playerY_L2, playerZ_L2);
-
-    // Rotate based on movement
-    float tiltAngle = (playerX_L2 - riverMinX) / (riverMaxX - riverMinX) * 30.0f - 15.0f;
-    glRotatef(tiltAngle, 0, 0, 1);
-
-    // Superhero color
-    glColor3f(1.0f, 0.5f, 0.0f); // Orange hero
+    // Save current lighting state
+    GLboolean lightingWasEnabled;
+    glGetBooleanv(GL_LIGHTING, &lightingWasEnabled);
+    
+    // Ensure lighting is enabled
+    glEnable(GL_LIGHTING);
     glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
 
-    // Body
-    glPushMatrix();
-    glScalef(2.0f, 3.0f, 1.5f);
-    glutSolidCube(1.0);
-    glPopMatrix();
+    // Set material properties
+    GLfloat matAmbient[] = { 0.6f, 0.6f, 0.6f, 1.0f };
+    GLfloat matDiffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    GLfloat matSpecular[] = { 0.5f, 0.5f, 0.5f, 1.0f };
+    GLfloat matShininess[] = { 30.0f };
 
-    // Head
-    glPushMatrix();
-    glTranslatef(0, 2.2f, 0);
-    glutSolidSphere(1.0, 16, 16);
-    glPopMatrix();
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, matAmbient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, matDiffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpecular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, matShininess);
 
-    // Cape (flowing back)
-    glDisable(GL_LIGHTING);
-    glColor3f(0.8f, 0.0f, 0.0f); // Red cape
-    glBegin(GL_TRIANGLE_STRIP);
-    glVertex3f(0, 1.0f, 0.5f);
-    glVertex3f(0, -1.0f, 0.5f);
-    glVertex3f(-1.0f, 0.5f, -1.0f);
-    glVertex3f(-1.0f, -1.5f, -1.0f);
-    glVertex3f(1.0f, 0.5f, -1.0f);
-    glVertex3f(1.0f, -1.5f, -1.0f);
-    glEnd();
-    glEnable(GL_LIGHTING);
+    // Set color based on state
+    if (drBeramRescued) {
+        glColor3f(0.0f, 1.0f, 0.0f); // Bright green when rescued (glowing effect)
+    }
+    else {
+        glColor3f(1.0f, 1.0f, 1.0f); // White to show textures properly
+    }
 
-    // Wings with flapping animation
-    glDisable(GL_LIGHTING);
-    glColor3f(0.9f, 0.9f, 0.1f); // Yellow wings
+    // Draw Dr. Beram model with appropriate scale
+    // You may need to adjust this scale depending on your model size
+    float beramScale = 0.5f; // Adjust this value based on your model size
+    glScalef(beramScale, beramScale, beramScale);
+    
+    // Draw the model
+    drBeramModel.Draw();
 
-    // Left wing
-    glPushMatrix();
-    glRotatef(wingFlap, 1, 0, 0);
-    glBegin(GL_TRIANGLES);
-    glVertex3f(-1.5f, 0, 0);
-    glVertex3f(-4.0f, 0, -3.0f);
-    glVertex3f(-1.5f, 0, -2.0f);
-    glEnd();
-    glPopMatrix();
+    // Add a glowing effect when rescued
+    if (drBeramRescued) {
+        glDisable(GL_LIGHTING);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        
+        // Draw a glowing sphere around Dr. Beram
+        glPushMatrix();
+        glColor4f(0.0f, 1.0f, 0.0f, 0.3f);
+        glutSolidSphere(15.0f, 16, 16);
+        glPopMatrix();
+        
+        glDisable(GL_BLEND);
+        glEnable(GL_LIGHTING);
+    }
 
-    // Right wing
-    glPushMatrix();
-    glRotatef(-wingFlap, 1, 0, 0);
-    glBegin(GL_TRIANGLES);
-    glVertex3f(1.5f, 0, 0);
-    glVertex3f(4.0f, 0, -3.0f);
-    glVertex3f(1.5f, 0, -2.0f);
-    glEnd();
-    glPopMatrix();
-
-    glEnable(GL_LIGHTING);
+    // Restore lighting state
+    if (!lightingWasEnabled) {
+        glDisable(GL_LIGHTING);
+    }
     glDisable(GL_COLOR_MATERIAL);
 
     glPopMatrix();
 }
 
-// Setup sunset lighting - IMPROVED with visible animation
+// Draw flying player with wing flap animation - USING MODEL LIKE LEVEL 1
+void drawPlayerLevel2() {
+    heroWingFlap += 10.0f;
+    if (heroWingFlap > 360.0f) heroWingFlap -= 360.0f;
+
+    glPushMatrix();
+
+    // Base position
+    glTranslatef(playerX_L2, playerY_L2, playerZ_L2);
+
+    // Hit animation (slide back)
+    if (playerHit_L2) {
+        glTranslatef(0.0f, 0.0f, playerHitDistance_L2);
+    }
+
+    // ====== NEW: ALWAYS TILT FORWARD ======
+    // Constant forward tilt (nose down)
+    glRotatef(-FORWARD_TILT_ANGLE, 1, 0, 0);
+
+    // THEN apply banking based on horizontal movement
+    glRotatef(playerRollAngle, 0, 0, 1);
+
+    // Additional pitch based on vertical movement (on top of constant tilt)
+    glRotatef(playerPitchAngle, 1, 0, 0);
+
+    // Spin animation when collecting
+    if (playerSpinning_L2) {
+        glRotatef(playerSpinAngle_L2, 0, 1, 0);
+    }
+
+    // Face forward (along -Z)
+    glRotatef(180.0f, 0, 1, 0);
+
+    // ====== INCREASED PLAYER SCALE ======
+    // Original: glScalef(1.5f, 1.5f, 1.5f);
+    // Try these values:
+    float playerScale = 2.0f;  // CHANGED FROM 1.5f TO 2.0f (33% larger)
+    glScalef(playerScale, playerScale, playerScale);
+
+    // Save and restore lighting state
+    GLboolean lightingWasEnabled;
+    glGetBooleanv(GL_LIGHTING, &lightingWasEnabled);
+
+    // Ensure lighting is ON before drawing the model
+    glEnable(GL_LIGHTING);
+    glEnable(GL_COLOR_MATERIAL);
+    glColorMaterial(GL_FRONT_AND_BACK, GL_AMBIENT_AND_DIFFUSE);
+
+    // Set material properties to make model bright
+    GLfloat matAmbient[] = { 0.7f, 0.7f, 0.7f, 1.0f };
+    GLfloat matDiffuse[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    GLfloat matSpecular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    GLfloat matShininess[] = { 50.0f };
+
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, matAmbient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, matDiffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, matSpecular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, matShininess);
+
+    // IMPORTANT: Set color to white to ensure texture shows correctly
+    glColor3f(1.0f, 1.0f, 1.0f);
+
+    // Draw player model
+    playerModel_L2.Draw();
+
+    // Restore lighting state
+    if (!lightingWasEnabled) {
+        glDisable(GL_LIGHTING);
+    }
+
+    glDisable(GL_COLOR_MATERIAL);
+
+    glPopMatrix();
+}
+
+// Setup sunset lighting with animated lights
 void setupSunLight() {
     glEnable(GL_LIGHTING);
 
-    // Main sunlight (LIGHT0)
+    // Main sunlight (LIGHT0) - sunset colors
     glEnable(GL_LIGHT0);
 
     // Sun color based on sunset progress
@@ -2211,9 +2649,40 @@ void setupSunLight() {
     glLightfv(GL_LIGHT1, GL_AMBIENT, fillAmbient);
     glLightfv(GL_LIGHT1, GL_DIFFUSE, fillDiffuse);
     glLightfv(GL_LIGHT1, GL_POSITION, fillPosition);
+
+    // Animated orbiting light (LIGHT2) - REQUIRED FOR LIGHT ANIMATION
+    glEnable(GL_LIGHT2);
+
+    // Calculate orbiting position
+    float orbitX = cos(lightOrbitAngle) * lightOrbitRadius;
+    float orbitZ = sin(lightOrbitAngle) * lightOrbitRadius;
+
+    GLfloat orbitPos[] = { orbitX, lightOrbitHeight, orbitZ, 1.0f };
+    GLfloat orbitColor[] = { 0.8f, 0.8f, 0.3f, 1.0f }; // Yellowish
+
+    glLightfv(GL_LIGHT2, GL_POSITION, orbitPos);
+    glLightfv(GL_LIGHT2, GL_DIFFUSE, orbitColor);
+    glLightfv(GL_LIGHT2, GL_SPECULAR, orbitColor);
+    glLightf(GL_LIGHT2, GL_CONSTANT_ATTENUATION, 0.5f);
+    glLightf(GL_LIGHT2, GL_LINEAR_ATTENUATION, 0.02f);
+    glLightf(GL_LIGHT2, GL_QUADRATIC_ATTENUATION, 0.001f);
+
+    // Additional moving light (LIGHT3) - moves up and down
+    glEnable(GL_LIGHT3);
+
+    float bounceY = lightOrbitHeight + sin(lightOrbitAngle * 2.0f) * 20.0f;
+    GLfloat bouncePos[] = { -lightOrbitRadius, bounceY, 0.0f, 1.0f };
+    GLfloat bounceColor[] = { 0.3f, 0.8f, 0.8f, 1.0f }; // Blueish
+
+    glLightfv(GL_LIGHT3, GL_POSITION, bouncePos);
+    glLightfv(GL_LIGHT3, GL_DIFFUSE, bounceColor);
+    glLightfv(GL_LIGHT3, GL_SPECULAR, bounceColor);
+    glLightf(GL_LIGHT3, GL_CONSTANT_ATTENUATION, 0.6f);
+    glLightf(GL_LIGHT3, GL_LINEAR_ATTENUATION, 0.03f);
+    glLightf(GL_LIGHT3, GL_QUADRATIC_ATTENUATION, 0.001f);
 }
 
-// Update sunset progress - IMPROVED
+// Update sunset progress
 void updateSunset(float deltaTime) {
     if (!sunsetActive) return;
 
@@ -2230,6 +2699,123 @@ void updateSunset(float deltaTime) {
     sunColor[0] = 1.0f;                    // Red stays high
     sunColor[1] = 0.9f - (sunsetProgress * 0.7f); // Green decreases
     sunColor[2] = 0.1f - (sunsetProgress * 0.1f); // Blue decreases slightly
+}
+
+// Update light animation
+void updateLightAnimation(float deltaTime) {
+    // Rotate orbiting lights
+    lightOrbitAngle += 0.5f * deltaTime; // Rotate lights slowly
+    if (lightOrbitAngle > 360.0f) lightOrbitAngle -= 360.0f;
+}
+
+// Update birds with back-and-forth patrol movement at different heights
+void updateBirds(float deltaTime) {
+    static float globalTime = 0.0f;
+    globalTime += deltaTime;
+
+    for (int i = 0; i < numBirds; i++) {
+        if (!birds[i].active) continue;
+
+        // PATROL MOVEMENT: Move back and forth along X-axis
+        if (birds[i].movingRight) {
+            birds[i].x += birds[i].patrolSpeed * deltaTime;
+
+            // Check if reached right endpoint
+            if (birds[i].x >= birds[i].patrolEndX) {
+                birds[i].x = birds[i].patrolEndX; // Clamp
+                birds[i].movingRight = false; // Turn around
+            }
+        }
+        else { // Moving left
+            birds[i].x -= birds[i].patrolSpeed * deltaTime;
+
+            // Check if reached left endpoint
+            if (birds[i].x <= birds[i].patrolStartX) {
+                birds[i].x = birds[i].patrolStartX; // Clamp
+                birds[i].movingRight = true; // Turn around
+            }
+        }
+
+        // NEW: Complex vertical bobbing with different patterns
+        float verticalMovement = 0.0f;
+
+        // Different bobbing patterns for variety
+        switch (i % 3) {
+        case 0: // Smooth sine wave
+            verticalMovement = sin(globalTime * birds[i].verticalBobSpeed + birds[i].bobPhase) * birds[i].verticalBobAmplitude;
+            break;
+        case 1: // Faster, smaller bobs
+            verticalMovement = sin(globalTime * birds[i].verticalBobSpeed * 1.5f + birds[i].bobPhase) * (birds[i].verticalBobAmplitude * 0.7f);
+            break;
+        case 2: // Gentle, slow bobs
+            verticalMovement = sin(globalTime * birds[i].verticalBobSpeed * 0.7f + birds[i].bobPhase) * (birds[i].verticalBobAmplitude * 1.2f);
+            break;
+        }
+
+        // Apply vertical movement
+        birds[i].y = birds[i].patrolY + verticalMovement;
+
+        // Keep birds within vertical bounds
+        if (birds[i].y < minHeight + 5.0f) birds[i].y = minHeight + 5.0f;
+        if (birds[i].y > maxHeight - 5.0f) birds[i].y = maxHeight - 5.0f;
+
+        // Keep birds within river bounds
+        if (birds[i].x < riverMinX + 10) {
+            birds[i].x = riverMinX + 10;
+            birds[i].movingRight = true;
+        }
+        if (birds[i].x > riverMaxX - 10) {
+            birds[i].x = riverMaxX - 10;
+            birds[i].movingRight = false;
+        }
+    }
+}
+
+// Update player animations
+void updatePlayerAnimations(float deltaTime) {
+    // Update spin animation
+    if (playerSpinning_L2) {
+        const float spinDuration = 0.5f;
+        const float spinSpeed = 720.0f;
+
+        playerSpinTime_L2 += deltaTime;
+        playerSpinAngle_L2 += spinSpeed * deltaTime;
+
+        if (playerSpinTime_L2 >= spinDuration) {
+            playerSpinning_L2 = false;
+            playerSpinAngle_L2 = 0.0f;
+            playerSpinTime_L2 = 0.0f;
+        }
+    }
+
+    // Update hit animation
+    if (playerHit_L2) {
+        const float hitDuration = 0.3f;
+        playerHitTime_L2 += deltaTime;
+
+        float t = playerHitTime_L2 / hitDuration;
+        if (t > 1.0f) t = 1.0f;
+
+        // Smooth slide back
+        float slide = (1.0f - cosf(t * 3.14159f)) * 0.5f;
+        playerHitDistance_L2 = slide * 3.0f; // Slide back 3 units
+
+        if (playerHitTime_L2 >= hitDuration) {
+            playerHit_L2 = false;
+            playerHitTime_L2 = 0.0f;
+            playerHitDistance_L2 = 0.0f;
+        }
+    }
+
+    // Smooth banking return
+    if (!keyStates['a'] && !keyStates['d']) {
+        playerRollAngle *= 0.9f;
+    }
+
+    // Smooth pitch return
+    if (!keyStates['w'] && !keyStates['s']) {
+        playerPitchAngle *= 0.9f;
+    }
 }
 
 // Draw HUD for Level 2
@@ -2269,8 +2855,9 @@ void drawCameraMode() {
 }
 
 void drawControlsInfo() {
-    drawText2D(-0.95f, -0.9f, "Controls: A/D=Left/Right, W/S=Up/Down, Arrows=Speed");
-    drawText2D(-0.95f, -0.95f, "Up=Speed+, Down=Speed-, 1/3=Camera, ESC=Exit");
+    drawText2D(-0.95f, -0.9f, "Controls: A/D=Left/Right  W/S=Up/Down  Arrows=Speed");
+    drawText2D(-0.95f, -0.85f, "5 Lives - Hit birds to lose lives");
+    drawText2D(-0.95f, -0.95f, "1=1st Person  3=3rd Person  ESC=Exit");
 }
 
 void drawGameStatusLevel2() {
@@ -2279,25 +2866,30 @@ void drawGameStatusLevel2() {
         drawText2D(-0.35f, 0.2f, "MISSION ACCOMPLISHED!");
         drawText2D(-0.3f, 0.1f, "Dr. Beram Rescued!");
         drawText2D(-0.25f, 0.0f, "Final Score: ");
+        drawText2D(-0.25f, -0.1f, "Lives Remaining: ");
 
         char scoreBuffer[32];
         sprintf(scoreBuffer, "%d", score_L2);
         drawText2D(0.05f, 0.0f, scoreBuffer);
 
-        drawText2D(-0.4f, -0.1f, "Press ESC to exit");
+        char livesBuffer[32];
+        sprintf(livesBuffer, "%d", playerLives);
+        drawText2D(0.05f, -0.1f, livesBuffer);
+
+        drawText2D(-0.4f, -0.2f, "Press ESC to exit");
         glEnable(GL_LIGHTING);
     }
     else if (gameState_L2 == GAME_LOST) {
         glDisable(GL_LIGHTING);
         drawText2D(-0.3f, 0.1f, "MISSION FAILED!");
-        drawText2D(-0.35f, 0.0f, "Time's up or crashed!");
+        drawText2D(-0.35f, 0.0f, "You ran out of lives!");
         drawText2D(-0.4f, -0.1f, "Press ESC to exit");
         glEnable(GL_LIGHTING);
     }
 }
 
 // ===============================
-// Level 2 GLUT Callbacks - UPDATED for smooth movement
+// Level 2 GLUT Callbacks
 // ===============================
 
 void keyboardLevel2(unsigned char key, int x, int y) {
@@ -2307,23 +2899,17 @@ void keyboardLevel2(unsigned char key, int x, int y) {
     }
 
     switch (key) {
-    case 'a': case 'A': // Left - PRESS
+    case 'a': case 'A': // Left
         keyStates['a'] = true;
         break;
-    case 'd': case 'D': // Right - PRESS
+    case 'd': case 'D': // Right
         keyStates['d'] = true;
         break;
-    case 'w': case 'W': // Speed up - PRESS
+    case 'w': case 'W': // Up
         keyStates['w'] = true;
         break;
-    case 's': case 'S': // Slow down - PRESS
+    case 's': case 'S': // Down
         keyStates['s'] = true;
-        break;
-    case ' ': // Space for up - PRESS
-        keyStates[' '] = true;
-        break;
-    case 'c': case 'C': // Down - PRESS
-        keyStates['c'] = true;
         break;
     case '1': // First person
         cameraMode_L2 = FIRST_PERSON;
@@ -2335,30 +2921,21 @@ void keyboardLevel2(unsigned char key, int x, int y) {
         exit(0);
         break;
     }
-
-    glutPostRedisplay();
 }
 
 void keyboardUpLevel2(unsigned char key, int x, int y) {
-    // Handle key releases for smooth movement
     switch (key) {
-    case 'a': case 'A': // Left - RELEASE
+    case 'a': case 'A':
         keyStates['a'] = false;
         break;
-    case 'd': case 'D': // Right - RELEASE
+    case 'd': case 'D':
         keyStates['d'] = false;
         break;
-    case 'w': case 'W': // Speed up - RELEASE
+    case 'w': case 'W':
         keyStates['w'] = false;
         break;
-    case 's': case 'S': // Slow down - RELEASE
+    case 's': case 'S':
         keyStates['s'] = false;
-        break;
-    case ' ': // Space for up - RELEASE
-        keyStates[' '] = false;
-        break;
-    case 'c': case 'C': // Down - RELEASE
-        keyStates['c'] = false;
         break;
     }
 }
@@ -2367,39 +2944,41 @@ void specialKeysLevel2(int key, int x, int y) {
     if (gameState_L2 != GAME_PLAYING) return;
 
     switch (key) {
-    case GLUT_KEY_UP: // Up arrow - PRESS
-        keyStates['w'] = true;
+    case GLUT_KEY_UP: // Speed up AND move up
+        specialKeyStates[GLUT_KEY_UP] = true;
+        keyStates['w'] = true;  // ADD THIS LINE
         break;
-    case GLUT_KEY_DOWN: // Down arrow - PRESS
-        keyStates['s'] = true;
+    case GLUT_KEY_DOWN: // Slow down AND move down
+        specialKeyStates[GLUT_KEY_DOWN] = true;
+        keyStates['s'] = true;  // ADD THIS LINE
         break;
-    case GLUT_KEY_LEFT: // Left arrow - PRESS
+    case GLUT_KEY_LEFT: // Left arrow
         keyStates['a'] = true;
         break;
-    case GLUT_KEY_RIGHT: // Right arrow - PRESS
+    case GLUT_KEY_RIGHT: // Right arrow
         keyStates['d'] = true;
         break;
     }
 }
 
 void specialUpLevel2(int key, int x, int y) {
-    // Handle special key releases
     switch (key) {
-    case GLUT_KEY_UP: // Up arrow - RELEASE
-        keyStates['w'] = false;
+    case GLUT_KEY_UP:
+        specialKeyStates[GLUT_KEY_UP] = false;
+        keyStates['w'] = false;  // ADD THIS LINE
         break;
-    case GLUT_KEY_DOWN: // Down arrow - RELEASE
-        keyStates['s'] = false;
+    case GLUT_KEY_DOWN:
+        specialKeyStates[GLUT_KEY_DOWN] = false;
+        keyStates['s'] = false;  // ADD THIS LINE
         break;
-    case GLUT_KEY_LEFT: // Left arrow - RELEASE
+    case GLUT_KEY_LEFT:
         keyStates['a'] = false;
         break;
-    case GLUT_KEY_RIGHT: // Right arrow - RELEASE
+    case GLUT_KEY_RIGHT:
         keyStates['d'] = false;
         break;
     }
 }
-
 void idleLevel2() {
     int currentMs = glutGet(GLUT_ELAPSED_TIME);
     float deltaTime = (currentMs - prevTimeMs_L2) / 1000.0f;
@@ -2410,102 +2989,78 @@ void idleLevel2() {
         if (gameState_L2 == GAME_WON) {
             rescueAnimationTime += deltaTime;
         }
-        // Still update sunset animation
+        // Still update sunset and light animations
         updateSunset(deltaTime);
+        updateLightAnimation(deltaTime);
         glutPostRedisplay();
         return;
     }
 
-    // ========== CONTINUOUS MOVEMENT HANDLING ==========
+    // ========== GAME LOGIC ==========
 
-    // Horizontal movement (A/D or Left/Right arrows)
-    float horizontalMove = 0.0f;
+    // Update animations
+    updateSunset(deltaTime);
+    updateLightAnimation(deltaTime);
+    updatePlayerAnimations(deltaTime);
+    updateBirds(deltaTime);
+
+    // ========== PLAYER MOVEMENT ==========
+
+    // Auto-forward movement (always fly forward)
+    playerZ_L2 -= playerSpeed_L2 * deltaTime;
+
+    // Horizontal movement
+    float turnSpeed = 30.0f * deltaTime;
     if (keyStates['a']) {
-        horizontalMove -= moveStep_L2 * deltaTime * 20.0f;
+        playerX_L2 -= turnSpeed;
+        playerRollAngle = 15.0f; // Bank left
     }
     if (keyStates['d']) {
-        horizontalMove += moveStep_L2 * deltaTime * 20.0f;
+        playerX_L2 += turnSpeed;
+        playerRollAngle = -15.0f; // Bank right
     }
 
-    // Apply horizontal movement
-    if (horizontalMove != 0.0f) {
-        playerX_L2 += horizontalMove;
-    }
-
-    // Vertical movement (W/S) - Key controlled only, no gravity
+    // Vertical movement
     if (keyStates['w']) {
-        verticalSpeed = liftForce; // W for UP
+        playerY_L2 += liftForce * deltaTime;
+        playerPitchAngle = -10.0f; // Nose up
     }
-    else if (keyStates['s']) {
-        verticalSpeed = -liftForce; // S for DOWN
-    }
-    else {
-        verticalSpeed = 0.0f; // No movement when no keys pressed (no gravity)
+    if (keyStates['s']) {
+        playerY_L2 -= liftForce * deltaTime;
+        playerPitchAngle = 10.0f; // Nose down
     }
 
-    // Speed control (Up/Down arrows) - SLOWER
-    if (keyStates[GLUT_KEY_UP]) { // Up arrow for speed up
-        playerSpeed_L2 += 3.0f * deltaTime; // Smooth acceleration
-        if (playerSpeed_L2 > 30.0f) playerSpeed_L2 = 30.0f;
+    // Speed control
+    if (specialKeyStates[GLUT_KEY_UP]) {
+        playerSpeed_L2 += 5.0f * deltaTime;
+        if (playerSpeed_L2 > 40.0f) playerSpeed_L2 = 40.0f;
     }
-    if (keyStates[GLUT_KEY_DOWN]) { // Down arrow for slow down
-        playerSpeed_L2 -= 3.0f * deltaTime; // Smooth deceleration
+    if (specialKeyStates[GLUT_KEY_DOWN]) {
+        playerSpeed_L2 -= 5.0f * deltaTime;
         if (playerSpeed_L2 < 8.0f) playerSpeed_L2 = 8.0f;
     }
 
-    // ========== REST OF THE GAME LOGIC ==========
+    // Clamp player position
+    if (playerX_L2 < riverMinX) playerX_L2 = riverMinX;
+    if (playerX_L2 > riverMaxX) playerX_L2 = riverMaxX;
+    if (playerY_L2 < minHeight) playerY_L2 = minHeight;
+    if (playerY_L2 > maxHeight) playerY_L2 = maxHeight;
 
-    // Update timer
-    int elapsed = currentMs - level2StartTimeMs;
-    remainingTime_L2 = level2DurationMs - elapsed;
-    if (remainingTime_L2 <= 0) {
-        remainingTime_L2 = 0;
+    // Check if player reached end without rescuing
+    if (playerZ_L2 < riverEndZ && !drBeramRescued) {
         gameState_L2 = GAME_LOST;
         glutPostRedisplay();
         return;
     }
 
-    // Update sunset animation
-    updateSunset(deltaTime);
-
-    // Auto-forward movement (always fly forward)
-    playerZ_L2 -= playerSpeed_L2 * deltaTime;
-
-    // Apply vertical movement
-    playerY_L2 += verticalSpeed * deltaTime;
-
-    // Clamp player position
-    if (playerX_L2 < riverMinX) {
-        playerX_L2 = riverMinX;
-    }
-    else if (playerX_L2 > riverMaxX) {
-        playerX_L2 = riverMaxX;
-    }
-
-    if (playerY_L2 < minHeight) {
-        playerY_L2 = minHeight;
-        verticalSpeed = 0; // Stop falling when hit ground
-    }
-    else if (playerY_L2 > maxHeight) {
-        playerY_L2 = maxHeight;
-        verticalSpeed = 0; // Stop rising when hit ceiling
-    }
-
-    // Check if player reached end without rescuing
-    if (playerZ_L2 < riverEndZ && !drBeramRescued) {
-        gameState_L2 = GAME_LOST; // Failed to rescue in time
-        glutPostRedisplay();
-        return;
-    }
-
-    // Collision detection
+    // ========== COLLISION DETECTION ==========
     AABB_L2 playerBox = getPlayerAABB_L2();
 
     // Check collectibles
     for (int i = 0; i < numFlyingCollectibles; i++) {
         if (flyingCollectibles[i].active && checkAABBCollision3D(playerBox, flyingCollectibles[i])) {
             flyingCollectibles[i].active = false;
-            score_L2 += 20; // More points for flying collectibles
+            score_L2 += 20;
             addCollectibleAnimation(i, flyingCollectibles[i].x, flyingCollectibles[i].y, flyingCollectibles[i].z);
         }
     }
@@ -2523,36 +3078,51 @@ void idleLevel2() {
         drBeram.active = false;
         drBeramRescued = true;
         gameState_L2 = GAME_WON;
-        score_L2 += 500; // Big bonus for rescue
-    }
-
-    // Move birds (simple animation) - birds fly toward player
-    for (int i = 0; i < numBirds; i++) {
-        if (birds[i].active) {
-            // Birds move in a sine wave pattern
-            birds[i].x += sin(currentMs * 0.001f + i) * 0.5f;
-            birds[i].y += sin(currentMs * 0.002f + i) * 0.3f;
-            birds[i].z += 15.0f * deltaTime; // Birds move toward player
-
-            // If bird passes player, reset it behind
-            if (birds[i].z > playerZ_L2 + 100.0f) {
-                birds[i].z = playerZ_L2 - 300.0f;
-                birds[i].x = randRange(riverMinX + 10, riverMaxX - 10);
-                birds[i].y = randRange(20, 35);
-            }
-        }
+        score_L2 += 500;
     }
 
     glutPostRedisplay();
 }
 
+// Draw lives with heart symbols
+void drawLivesDisplay() {
+    // Text display
+    char buffer[64];
+    sprintf(buffer, "Lives: %d", playerLives);
+    drawText2D(-0.95f, 0.85f, buffer);
+
+    // Visual hearts (simple colored squares or circles)
+    glDisable(GL_LIGHTING);
+    glColor3f(1.0f, 0.0f, 0.0f); // Red for hearts
+
+    float heartX = -0.8f;
+    float heartY = 0.77f;
+    float heartSpacing = 0.07f;
+
+    for (int i = 0; i < playerLives; i++) {
+        // Draw a simple heart shape (using two triangles)
+        glBegin(GL_TRIANGLES);
+        // Left triangle
+        glVertex2f(heartX + i * heartSpacing, heartY);
+        glVertex2f(heartX + i * heartSpacing - 0.015f, heartY - 0.02f);
+        glVertex2f(heartX + i * heartSpacing + 0.015f, heartY - 0.02f);
+        // Right triangle
+        glVertex2f(heartX + i * heartSpacing + 0.015f, heartY - 0.02f);
+        glVertex2f(heartX + i * heartSpacing + 0.03f, heartY);
+        glVertex2f(heartX + i * heartSpacing, heartY);
+        glEnd();
+    }
+    glEnable(GL_LIGHTING);
+}
+
 void displayLevel2() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    drawSky();
 
     setupCameraLevel2();
     setupSunLight();
 
-    drawSky();
     drawNileRiver();
     drawFlyingCollectibles();
     drawBirds();
@@ -2562,7 +3132,7 @@ void displayLevel2() {
     // HUD elements
     glDisable(GL_LIGHTING);
     drawScoreLevel2();
-    drawTimerLevel2();
+    drawLivesDisplay();
     drawHeightIndicator();
     drawSpeedIndicator();
     drawCameraMode();
@@ -2581,20 +3151,155 @@ void reshapeLevel2(int w, int h) {
 
     glMatrixMode(GL_PROJECTION);
     glLoadIdentity();
-    gluPerspective(60.0, aspect, 1.0, 3000.0); // Larger far plane for flying
+    gluPerspective(60.0, aspect, 1.0, 3000.0);
 
     glMatrixMode(GL_MODELVIEW);
 }
 
-// Safe model loading that won't crash if files don't exist
+// Load models for Level 2 (like Level 1)
 void loadModelsLevel2() {
-    // Using glut placeholders instead of 3DS models for now
-    modelsLoaded = false;
+    printf("Loading Level 2 models...\n");
 
-    // Load shared sky texture
+    // Load player model (same as Level 1)
+    playerModel_L2.Load("models/Player.3ds");
+    printf("Player model loaded\n");
+
+    // Apply player texture (same as Level 1)
+    if (playerModel_L2.numMaterials > 0) {
+        char playerTexPath[256];
+        strcpy_s(playerTexPath, sizeof(playerTexPath), "textures/Ch24_1001_Diffuse.bmp");
+        playerModel_L2.Materials[0].tex.Load(playerTexPath);
+        playerModel_L2.Materials[0].textured = true;
+
+        // Apply to all materials
+        for (int i = 1; i < playerModel_L2.numMaterials; ++i) {
+            playerModel_L2.Materials[i].tex.Load(playerTexPath);
+            playerModel_L2.Materials[i].textured = true;
+        }
+    }
+
+    // Load bird model with texture
+    birdModel_L2.Load("models/Bird_Level2.3ds");
+    printf("Bird model loaded\n");
+
+    // Apply bird texture
+    if (birdModel_L2.numMaterials > 0) {
+        char birdTexPath[256];
+        strcpy_s(birdTexPath, sizeof(birdTexPath), "textures/Bird_Level2.bmp");
+        birdModel_L2.Materials[0].tex.Load(birdTexPath);
+        birdModel_L2.Materials[0].textured = true;
+
+        // Apply to all materials
+        for (int i = 1; i < birdModel_L2.numMaterials; ++i) {
+            birdModel_L2.Materials[i].tex.Load(birdTexPath);
+            birdModel_L2.Materials[i].textured = true;
+        }
+    }
+
+    // ========== LOAD DR. BERAM MODEL ==========
+    drBeramModel.Load("models/Beram.3ds");
+    printf("Dr. Beram model loaded: %d materials\n", drBeramModel.numMaterials);
+
+    // Apply textures to Dr. Beram model if it has materials
+    if (drBeramModel.numMaterials > 0) {
+        // You can load specific textures for Dr. Beram if needed
+        char beramTexPath[256];
+        strcpy_s(beramTexPath, sizeof(beramTexPath), "textures/Ch24_1001_Diffuse.bmp");
+
+        for (int i = 0; i < drBeramModel.numMaterials; i++) {
+            drBeramModel.Materials[i].tex.Load(beramTexPath);
+            drBeramModel.Materials[i].textured = true;
+            printf("Applied texture to Dr. Beram material %d\n", i);
+        }
+    }
+
+    // ========== LOAD COLLECTIBLE MODEL ==========
+    collectibleModel_L2.Load("models/3enabeyat1.3ds");
+    printf("Collectible model loaded: %d materials\n", collectibleModel_L2.numMaterials);
+
+    // Apply your real textures to the 3enabeyat model
+    if (collectibleModel_L2.numMaterials > 0) {
+        // Load your first texture (3ennabeyat1.bmp)
+        char texPath1[256];
+        strcpy_s(texPath1, sizeof(texPath1), "textures/3ennabeyat1.bmp");
+
+        // Load your second texture (3ennabeyat2.bmp)
+        char texPath2[256];
+        strcpy_s(texPath2, sizeof(texPath2), "textures/3ennabeyat2.bmp");
+
+        printf("Loading collectible textures...\n");
+        printf("Texture 1: %s\n", texPath1);
+        printf("Texture 2: %s\n", texPath2);
+
+        // Apply textures to materials
+        for (int i = 0; i < collectibleModel_L2.numMaterials; i++) {
+            if (i == 0) {
+                // First material gets first texture
+                collectibleModel_L2.Materials[i].tex.Load(texPath1);
+                collectibleModel_L2.Materials[i].textured = true;
+                printf("Applied texture 1 to material %d\n", i);
+            }
+            else if (i == 1 && collectibleModel_L2.numMaterials > 1) {
+                // Second material gets second texture if it exists
+                collectibleModel_L2.Materials[i].tex.Load(texPath2);
+                collectibleModel_L2.Materials[i].textured = true;
+                printf("Applied texture 2 to material %d\n", i);
+            }
+            else {
+                // Any additional materials default to first texture
+                collectibleModel_L2.Materials[i].tex.Load(texPath1);
+                collectibleModel_L2.Materials[i].textured = true;
+                printf("Applied texture 1 to material %d (default)\n", i);
+            }
+        }
+    }
+
+    // Load sky texture
     loadSkyTexture();
-}
 
+    // ========== LOAD RIVER TEXTURE ==========
+    char riverTexturePath[256];
+    strcpy_s(riverTexturePath, sizeof(riverTexturePath), "textures/River.bmp");
+    riverTexture.Load(riverTexturePath);
+    printf("River texture loaded\n");
+
+    if (riverTexture.texture[0] != 0) {
+        glBindTexture(GL_TEXTURE_2D, riverTexture.texture[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+
+    // ========== LOAD GROUND TEXTURES FOR LEVEL 2 ==========
+    char grassTexturePath[256];
+    strcpy_s(grassTexturePath, sizeof(grassTexturePath), "textures/Grass.bmp");
+    grassTexture.Load(grassTexturePath);
+    printf("Grass texture loaded\n");
+
+    if (grassTexture.texture[0] != 0) {
+        glBindTexture(GL_TEXTURE_2D, grassTexture.texture[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+
+    char concrMetTexturePath[256];
+    strcpy_s(concrMetTexturePath, sizeof(concrMetTexturePath), "textures/ConcrMet.bmp");
+    concrMetTexture.Load(concrMetTexturePath);
+    printf("Concrete texture loaded\n");
+
+    if (concrMetTexture.texture[0] != 0) {
+        glBindTexture(GL_TEXTURE_2D, concrMetTexture.texture[0]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    }
+
+    printf("All Level 2 models loaded successfully\n");
+}
 
 void initGLLevel2() {
     srand((unsigned int)time(NULL));
@@ -2606,15 +3311,12 @@ void initGLLevel2() {
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-    setupSunLight();
+    // Load models
+    loadModelsLevel2();
+
     setupLevel2();
 
-    // Call the function to load sky texture
-    loadModelsLevel2();  // UNCOMMENTED - Now it only loads texture, not 3DS models
-
     prevTimeMs_L2 = glutGet(GLUT_ELAPSED_TIME);
-    level2StartTimeMs = prevTimeMs_L2;
-    remainingTime_L2 = level2DurationMs;
     gameState_L2 = GAME_PLAYING;
 }
 
@@ -2635,9 +3337,9 @@ int main(int argc, char** argv) {
     glutDisplayFunc(displayLevel2);
     glutIdleFunc(idleLevel2);
     glutKeyboardFunc(keyboardLevel2);
-    glutKeyboardUpFunc(keyboardUpLevel2);        // NEW: For smooth key release handling
+    glutKeyboardUpFunc(keyboardUpLevel2);
     glutSpecialFunc(specialKeysLevel2);
-    glutSpecialUpFunc(specialUpLevel2);          // NEW: For smooth arrow key release handling
+    glutSpecialUpFunc(specialUpLevel2);
     glutReshapeFunc(reshapeLevel2);
 #else
     glutCreateWindow("El Ragol El 3ennab - Level 1");
