@@ -1,16 +1,19 @@
 ﻿  main.cpp
-C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(7,27): warning C4616: #pragma warning: warning number '2381' not a valid compiler warning
-C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(12,9): warning C4005: 'GLUT_DISABLE_ATEXIT_HACK': macro redefinition
-      C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(12,9):
+D:\graphics project\DMET702_Project\main.cpp(7,27): warning C4616: #pragma warning: warning number '2381' not a valid compiler warning
+D:\graphics project\DMET702_Project\main.cpp(12,9): warning C4005: 'GLUT_DISABLE_ATEXIT_HACK': macro redefinition
+      D:\graphics project\DMET702_Project\main.cpp(12,9):
       'GLUT_DISABLE_ATEXIT_HACK' previously declared on the command line
   
-C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(2824,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(2834,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(2840,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(2846,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(2853,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(2872,9): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(2876,9): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
-C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\main.cpp(3091,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\graphics project\DMET702_Project\main.cpp(947,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\graphics project\DMET702_Project\main.cpp(956,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\graphics project\DMET702_Project\main.cpp(3315,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\graphics project\DMET702_Project\main.cpp(3325,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\graphics project\DMET702_Project\main.cpp(3331,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\graphics project\DMET702_Project\main.cpp(3337,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\graphics project\DMET702_Project\main.cpp(3344,5): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\graphics project\DMET702_Project\main.cpp(3363,9): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+D:\graphics project\DMET702_Project\main.cpp(3367,9): warning C4996: 'sprintf': This function or variable may be unsafe. Consider using sprintf_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
 GLTexture.obj : warning LNK4075: ignoring '/EDITANDCONTINUE' due to '/INCREMENTAL:NO' specification
-  OpenGLMeshLoader.vcxproj -> C:\Users\amiro\Documents\GUC\Semester 7\Graphics\Project\WORK\DMET702_Project\Debug\B.exe
+  OpenGLMeshLoader.vcxproj -> D:\graphics project\DMET702_Project\Debug\B.exe
+  'pwsh.exe' is not recognized as an internal or external command,
+  operable program or batch file.
