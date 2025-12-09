@@ -16,6 +16,9 @@
 #include "GLTexture.h"
 #include <stdlib.h>
 #include <time.h>
+#include <windows.h>
+#include <mmsystem.h>
+#pragma comment(lib, "winmm.lib")
 
 // ===============================
 // SHARED UTILITIES (used by both levels)
@@ -27,6 +30,23 @@ GLTexture skyTexture;
 // Level 2 animates these. Level 1 just uses the default "start" values.
 float sunColor[3] = { 1.0f, 0.9f, 0.0f }; // yellowish sun
 float sunsetProgress = 0.0f;              // 0..1, 0 = no sunset
+
+
+void playCollectibleSound() {
+    PlaySound(TEXT("sounds/collect.wav"), NULL, SND_FILENAME | SND_ASYNC);
+}
+
+void playloseSound() {
+    PlaySound(TEXT("sounds/obstacle.wav"), NULL, SND_FILENAME | SND_ASYNC);
+}
+
+void playhitSound() {
+    PlaySound(TEXT("sounds/lose.wav"), NULL, SND_FILENAME | SND_ASYNC);
+}
+
+void playwinSound() {
+    PlaySound(TEXT("sounds/win.wav"), NULL, SND_FILENAME | SND_ASYNC);
+}
 
 // Load the sky texture once and configure it
 void loadSkyTexture() {
@@ -338,6 +358,8 @@ bool checkAABBCollision(const AABB& a, const AABB& b) {
 float playerX = 0.0f;      // side movement along the street (left/right)
 float playerZ = 0.0f;      // forward movement (runner direction, negative Z)
 float playerY = 0.0f;      // height
+bool showCollisionBoxes = false;   // << turn to true when debugging
+
 // Collider size (hitbox) for each trash can
 // Make the box a bit tighter so it matches the cylinder better
 const float TRASH_COLLIDER_HALF_W = 0.9f;
@@ -1538,11 +1560,15 @@ void display() {
     drawTrashCans();
     debugDrawTrashAtOrigin();
     debugDrawCollectibleAtOrigin();
+    // Only draw collision boxes when debugging
+if (showCollisionBoxes) {
     drawTrashCollisionBoxes();
     drawCarCollisionBoxes();
     drawCollectibleCollisionBoxes();
     drawPlayerCollisionBox();
     drawCheckpointCollisionBox();
+}
+
     drawCollectibles();
     drawCheckpoint();
     drawPlayer();
@@ -1622,6 +1648,8 @@ void idle() {
         if (remainingTimeMs <= 0) {
             remainingTimeMs = 0;
             gameState = GAME_LOST;   // time up
+            // ✅ play lose sound once
+            playloseSound();
             glutPostRedisplay();
             return;
         }
@@ -1668,6 +1696,8 @@ void idle() {
 
             if (checkAABBCollision(playerBox, cars[i])) {
                 handleObstacleCollision(cars[i]);
+                // ✅ play hit sound (car)
+                playhitSound();
                 // Rebuild player box after we moved the player
                 playerBox = getPlayerAABB();
                 // Start slide animation
@@ -1687,8 +1717,11 @@ void idle() {
 
             AABB trashBox = getTrashWorldAABB(trashCans[i]);  // <-- apply offset
 
+
             if (checkAABBCollision(playerBox, trashBox)) {
                 handleObstacleCollision(trashBox);
+                // ✅ play hit sound (car)
+                playhitSound();
                 playerBox = getPlayerAABB();
 
                 // Start slide animation - remember Z at start of hit
@@ -1714,6 +1747,8 @@ void idle() {
                 collectibles[i].active = false;          // no more collisions
                 collectibleShrinking[i] = true;          // start scaling down
                 score += 10;
+                // ✅ play collect sound
+               playCollectibleSound();
 
                 // 💫 trigger player spin animation
                 playerSpinning = true;
@@ -1729,6 +1764,7 @@ void idle() {
         if (checkpoint.active && checkAABBCollision(playerBox, checkpoint)) {
             checkpoint.active = false;
             gameState = GAME_WON;
+            playwinSound();
 
             // Start transition effect. actual switch to Level 2 happens in idle()
             transitionToLevel2 = true;
@@ -2291,6 +2327,8 @@ void drawDrBeramCollisionBox_L2() {
 
 // Handle collision with bird: smooth bounce back, bird stays visible
 void handleBirdCollision(int birdIndex) {
+    // ✅ hit sound for bird collision
+    playhitSound();
     // 1. Lose a life
     playerLives--;
     if (playerLives < 0) playerLives = 0;
@@ -2334,6 +2372,8 @@ void handleBirdCollision(int birdIndex) {
     // 7. Check for game over
     if (playerLives == 0) {
         gameState_L2 = GAME_LOST;
+        // ✅ play lose sound once
+    playloseSound();
     }
 }
 
@@ -3540,6 +3580,8 @@ void idleLevel2() {
     // Check if player reached end without rescuing
     if (playerZ_L2 < riverEndZ && !drBeramRescued) {
         gameState_L2 = GAME_LOST;
+        // ✅ play lose sound once
+        playloseSound();
         glutPostRedisplay();
         return;
     }
@@ -3552,6 +3594,8 @@ void idleLevel2() {
         if (flyingCollectibles[i].active && checkAABBCollision3D(playerBox, flyingCollectibles[i])) {
             flyingCollectibles[i].active = false;
             score_L2 += 20;
+            // ✅ play collect sound
+            playCollectibleSound();
             addCollectibleAnimation(i, flyingCollectibles[i].x, flyingCollectibles[i].y, flyingCollectibles[i].z);
         }
     }
@@ -3568,6 +3612,7 @@ void idleLevel2() {
     if (drBeram.active && checkAABBCollision3D(playerBox, drBeram)) {
         drBeramRescued = true;
         gameState_L2 = GAME_WON;
+        playwinSound();
         score_L2 += 500;
 
         // Move to the win scene. buildings from Level 1 and sky
