@@ -3201,9 +3201,11 @@ void drawPlayerLevel2() {
         }
 
         // Flying pose (tilt)
-        glRotatef(-FORWARD_TILT_ANGLE, 1, 0, 0);
+// Positive X rotation = nose down (lean forward)
+        glRotatef(FORWARD_TILT_ANGLE, 1, 0, 0);
         glRotatef(playerRollAngle, 0, 0, 1);
         glRotatef(playerPitchAngle, 1, 0, 0);
+
     }
     else {
         // Win scene. stand mostly upright, slight idle rotate
@@ -3917,11 +3919,20 @@ void drawLivesDisplay() {
 void displayLevel2() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-    drawSky();
-
+    // 1. Set the camera for level 2
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
     setupCameraLevel2();
+
+    // 2. Draw the sky *behind everything* and do NOT write/use depth
+    glDisable(GL_DEPTH_TEST);
+    drawSky();
+    glEnable(GL_DEPTH_TEST);
+
+    // 3. Lights for level 2
     setupSunLight();
 
+    // 4. World geometry
     drawNileRiver();
 
     if (winSceneActive && gameState_L2 == GAME_WON) {
@@ -3933,31 +3944,20 @@ void displayLevel2() {
         drawBirds();
     }
 
+    // 5. Characters
     drawDrBeram();
     drawPlayerLevel2();
 
-
-    // Debug collision boxes
-    //if (debugDrawCollision_L2) {
-        //drawPlayerCollisionBox_L2();
-        //drawCollectibleCollisionBoxes_L2();
-        //drawBirdCollisionBoxes_L2();
-      //  drawDrBeramCollisionBox_L2();
-    //}
-
-    // HUD elements
+    // 6. HUD
     glDisable(GL_LIGHTING);
     drawScoreLevel2();
     drawLivesDisplay();
-    //drawHeightIndicator();
-    //drawSpeedIndicator();
-    //drawCameraMode();
-    //drawControlsInfo();
     drawGameStatusLevel2();
     glEnable(GL_LIGHTING);
 
     glutSwapBuffers();
 }
+
 
 void reshapeLevel2(int w, int h) {
     if (h == 0) h = 1;
