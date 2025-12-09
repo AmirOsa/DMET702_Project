@@ -2410,7 +2410,7 @@ void setupLevel2() {
     playerSpeed_L2 = 20.0f;
     score_L2 = 0;
     playerLives = 5;
-    sunsetProgress = 0.0f;
+    sunsetProgress = 0.05f;  // Start with small progress so sunset is visible immediately
     sunsetActive = true;
     drBeramRescued = false;
     rescueAnimationTime = 0.0f;
@@ -3140,18 +3140,47 @@ void drawPlayerLevel2() {
 void setupSunLight() {
     glEnable(GL_LIGHTING);
 
-    // Main sunlight (LIGHT0) - sunset colors
+    // Main sunlight (LIGHT0) - sunset colors with intensity changes
     glEnable(GL_LIGHT0);
 
-    // Sun color based on sunset progress
-    GLfloat lightDiffuse[] = { sunColor[0], sunColor[1], sunColor[2], 1.0f };
+    // Calculate intensity reduction as sun sets - VERY DRAMATIC
+    // Intensity drops from 1.0 to 0.1 (90% reduction)
+    float lightIntensity = 1.0f - (sunsetProgress * 0.9f);
+    if (lightIntensity < 0.1f) lightIntensity = 0.1f;
+
+    // Sun color based on sunset progress - keep colors vibrant even as intensity drops
+    // This ensures color changes are visible
+    GLfloat lightDiffuse[] = { 
+        sunColor[0] * lightIntensity, 
+        sunColor[1] * lightIntensity, 
+        sunColor[2] * lightIntensity, 
+        1.0f 
+    };
+    
+    // Ambient light: starts bright, dims significantly as sun sets
+    // Also shifts to warmer colors (more red/orange) as sunset progresses
+    float ambientIntensity = 0.4f - (sunsetProgress * 0.3f);
+    if (ambientIntensity < 0.1f) ambientIntensity = 0.1f;
+    
+    // Make ambient color shift more dramatic
     GLfloat lightAmbient[] = {
-        0.2f + sunsetProgress * 0.3f,
-        0.2f + sunsetProgress * 0.2f,
-        0.1f + sunsetProgress * 0.1f,
+        0.25f + sunsetProgress * 0.4f,  // More red as sun sets (0.25 -> 0.65)
+        0.2f + sunsetProgress * 0.2f,   // Less green increase (0.2 -> 0.4)
+        0.1f + sunsetProgress * 0.05f,   // Minimal blue (0.1 -> 0.15)
         1.0f
     };
-    GLfloat lightSpecular[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    // Apply intensity to ambient
+    lightAmbient[0] *= ambientIntensity;
+    lightAmbient[1] *= ambientIntensity;
+    lightAmbient[2] *= ambientIntensity;
+    
+    // Specular also dims with sunset
+    GLfloat lightSpecular[] = { 
+        lightIntensity, 
+        lightIntensity * 0.9f, 
+        lightIntensity * 0.7f, 
+        1.0f 
+    };
 
     // Sun position (moves with sunset)
     float sunX = 200.0f - sunsetProgress * 300.0f;
@@ -3163,10 +3192,23 @@ void setupSunLight() {
     glLightfv(GL_LIGHT0, GL_SPECULAR, lightSpecular);
     glLightfv(GL_LIGHT0, GL_POSITION, lightPosition);
 
-    // Fill light (LIGHT1) for better illumination
+    // Fill light (LIGHT1) - also dims as sunset progresses
     glEnable(GL_LIGHT1);
-    GLfloat fillAmbient[] = { 0.1f, 0.1f, 0.1f, 1.0f };
-    GLfloat fillDiffuse[] = { 0.4f, 0.4f, 0.4f, 1.0f };
+    float fillIntensity = 0.5f - (sunsetProgress * 0.35f);
+    if (fillIntensity < 0.1f) fillIntensity = 0.1f;
+    
+    GLfloat fillAmbient[] = { 
+        0.1f * fillIntensity, 
+        0.1f * fillIntensity, 
+        0.1f * fillIntensity, 
+        1.0f 
+    };
+    GLfloat fillDiffuse[] = { 
+        0.4f * fillIntensity, 
+        0.4f * fillIntensity, 
+        0.4f * fillIntensity, 
+        1.0f 
+    };
     GLfloat fillPosition[] = { 0.0f, 100.0f, 0.0f, 1.0f };
 
     glLightfv(GL_LIGHT1, GL_AMBIENT, fillAmbient);
@@ -3210,18 +3252,49 @@ void updateSunset(float deltaTime) {
     if (!sunsetActive) return;
 
     // Gradually progress sunset based on time and player position
+    // Use remainingTime_L2 which is already being updated in idleLevel2
     float progressByTime = (float)(level2DurationMs - remainingTime_L2) / level2DurationMs;
+    if (progressByTime < 0.0f) progressByTime = 0.0f;
+    if (progressByTime > 1.0f) progressByTime = 1.0f;
+    
     float progressByDistance = (riverStartZ - playerZ_L2) / (riverStartZ - riverEndZ);
+    if (progressByDistance < 0.0f) progressByDistance = 0.0f;
+    if (progressByDistance > 1.0f) progressByDistance = 1.0f;
 
-    // Combine both factors
-    sunsetProgress = 0.7f * progressByTime + 0.3f * progressByDistance;
-
+    // Combine both factors - make sunset progress faster and more visible
+    sunsetProgress = 0.6f * progressByTime + 0.4f * progressByDistance;
+    
+    // Make sunset transition happen faster - compress the timeline
+    // This makes changes visible sooner (complete sunset in 80% of level time)
+    sunsetProgress = sunsetProgress * 1.25f; // Speed up by 25%
     if (sunsetProgress > 1.0f) sunsetProgress = 1.0f;
 
-    // Smooth color transition from yellow to orange/red
-    sunColor[0] = 1.0f;                    // Red stays high
-    sunColor[1] = 0.9f - (sunsetProgress * 0.7f); // Green decreases
-    sunColor[2] = 0.1f - (sunsetProgress * 0.1f); // Blue decreases slightly
+    if (sunsetProgress > 1.0f) sunsetProgress = 1.0f;
+    if (sunsetProgress < 0.05f) sunsetProgress = 0.05f; // Ensure minimum visibility
+
+    // Enhanced smooth color transition: yellow -> orange -> deep red
+    // Make color changes more dramatic and visible
+    // Early sunset (0.0-0.4): Yellow to Orange
+    if (sunsetProgress < 0.4f) {
+        float t = sunsetProgress / 0.4f; // 0 to 1 over first 40%
+        sunColor[0] = 1.0f;                    // Red stays at max
+        sunColor[1] = 0.9f - (t * 0.5f);       // Green: 0.9 -> 0.4 (more dramatic)
+        sunColor[2] = 0.0f;                     // Blue stays at 0
+    }
+    // Mid sunset (0.4-0.7): Orange to Red-Orange
+    else if (sunsetProgress < 0.7f) {
+        float t = (sunsetProgress - 0.4f) / 0.3f; // 0 to 1 over 40-70%
+        sunColor[0] = 1.0f;                    // Red stays at max
+        sunColor[1] = 0.4f - (t * 0.25f);      // Green: 0.4 -> 0.15
+        sunColor[2] = 0.0f;                     // Blue stays at 0
+    }
+    // Late sunset (0.7-1.0): Red-Orange to Deep Red
+    else {
+        float t = (sunsetProgress - 0.7f) / 0.3f; // 0 to 1 over last 30%
+        sunColor[0] = 1.0f;                    // Red stays at max
+        sunColor[1] = 0.15f - (t * 0.1f);      // Green: 0.15 -> 0.05 (very red)
+        sunColor[2] = t * 0.08f;               // Blue: 0 -> 0.08 (slight purple tint)
+    }
 }
 
 // Update light animation
@@ -3528,6 +3601,11 @@ void idleLevel2() {
     }
 
     // ========== GAME LOGIC ==========
+
+    // Update timer for sunset calculation
+    int elapsedMs = currentMs - level2StartTimeMs;
+    remainingTime_L2 = level2DurationMs - elapsedMs;
+    if (remainingTime_L2 < 0) remainingTime_L2 = 0;
 
     // Update animations
     updateSunset(deltaTime);
