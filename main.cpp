@@ -358,6 +358,9 @@ bool checkAABBCollision(const AABB& a, const AABB& b) {
 float playerX = 0.0f;      // side movement along the street (left/right)
 float playerZ = 0.0f;      // forward movement (runner direction, negative Z)
 float playerY = 0.0f;      // height
+// Player facing direction (Y-rotation in degrees)
+float playerFacingAngle_L1 = 180.0f;   // 180 = facing forward along -Z
+
 bool showCollisionBoxes = false;   // << turn to true when debugging
 
 // Collider size (hitbox) for each trash can
@@ -403,6 +406,19 @@ CameraMode cameraMode = THIRD_PERSON;
 float eyeHeight = 2.0f;  // height of player's eyes
 float thirdPersonDist = 8.0f;  // how far camera is behind player
 float thirdPersonHeight = 4.0f; // how high camera is above player
+
+// -------- Mouse camera (shared idea, Level 1 uses these) --------
+float cameraYaw_L1 = 0.0f;   // degrees, left/right orbit with mouse
+float cameraPitch_L1 = 0.0f;   // degrees, up/down orbit with mouse
+
+// Mouse state for dragging
+bool mouseDragging_L1 = false;
+int  lastMouseX_L1 = 0;
+int  lastMouseY_L1 = 0;
+
+// Common constants for both levels
+const float MOUSE_SENSITIVITY = 0.25f;   // higher = faster rotation
+const float MAX_CAMERA_PITCH = 45.0f;   // clamp up/down
 
 // Score
 int score = 0;
@@ -710,6 +726,11 @@ void setupLevel1() {
     checkpoint.active = false;
     checkpointSpawned20s = false;
     checkpointSpawned3s = false;
+    playerFacingAngle_L1 = 180.0f;
+    cameraYaw_L1 = 0.0f;
+    cameraPitch_L1 = 0.0f;
+
+
 
     // Reset animations
     playerSpinning = false;
@@ -894,10 +915,28 @@ void setupCamera() {
             0, 1, 0
         );
     }
-    else { // THIRD_PERSON (unchanged logic)
-        float camX = playerX - baseDirX * thirdPersonDist;
-        float camY = playerY + thirdPersonHeight;
-        float camZ = playerZ - baseDirZ * thirdPersonDist;
+    else { // THIRD_PERSON with mouse orbit
+        // Camera orbits around the player at fixed distance
+        const float DEG2RAD = 3.14159265f / 180.0f;
+
+        float dist = thirdPersonDist;
+        float height = thirdPersonHeight;
+
+        // Spherical distance and base pitch
+        float R = sqrtf(dist * dist + height * height);
+        float basePitch = atanf(height / dist);
+
+        float yawRad = cameraYaw_L1 * DEG2RAD;
+        float pitchRad = basePitch + cameraPitch_L1 * DEG2RAD;
+
+        // Offset from player to camera
+        float camOffsetX = R * sinf(yawRad) * cosf(pitchRad);
+        float camOffsetY = R * sinf(pitchRad);
+        float camOffsetZ = R * cosf(yawRad) * cosf(pitchRad);
+
+        float camX = playerX + camOffsetX;
+        float camY = playerY + camOffsetY;
+        float camZ = playerZ + camOffsetZ;
 
         gluLookAt(
             camX, camY, camZ,
@@ -905,6 +944,7 @@ void setupCamera() {
             0, 1, 0
         );
     }
+
 }
 
 
@@ -1197,9 +1237,26 @@ void drawCollectibles() {
         // Draw the collectible model with textures
         collectibleModel.Draw();
 
+        // ------- Red glow around collectible -------
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_LIGHTING);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        // radius scaled with the object size
+        float glowRadius = 1.2f;      // base radius in model space
+        glColor4f(1.0f, 0.2f, 0.2f, 0.6f);
+        glutSolidSphere(glowRadius, 12, 12);
+
+        glDisable(GL_BLEND);
+        glEnable(GL_LIGHTING);
+        glEnable(GL_TEXTURE_2D);
+        // -------------------------------------------
+
         glPopMatrix();
     }
 }
+
 
 
 
@@ -1307,13 +1364,14 @@ void drawPlayer() {
     // Base position (x, 0, z) - already includes knockback
     glTranslatef(playerX, 0.0f, playerZ);
 
-    // Face -Z direction
-    glRotatef(180.0f, 0, 1, 0);
+    // Face current movement direction
+    glRotatef(playerFacingAngle_L1, 0, 1, 0);
 
-    // Spin when collecting
+    // Spin when collecting (adds on top of facing angle)
     if (playerSpinning) {
         glRotatef(playerSpinAngle, 0, 1, 0);
     }
+
 
     glScalef(1.5f, 1.5f, 1.5f);
     playerModel.Draw();
@@ -1558,8 +1616,8 @@ void display() {
     drawLamps();
     drawCars();
     drawTrashCans();
-    debugDrawTrashAtOrigin();
-    debugDrawCollectibleAtOrigin();
+    //debugDrawTrashAtOrigin();
+    //debugDrawCollectibleAtOrigin();
     // Only draw collision boxes when debugging
 if (showCollisionBoxes) {
     drawTrashCollisionBoxes();
@@ -1836,25 +1894,35 @@ void keyboardLevel1(unsigned char key, int x, int y) {
     float newX = playerX;
     float newZ = playerZ;
 
+    bool moved = false;
+
     switch (key) {
     case 'a':
     case 'A':
         newX -= moveStep;
+        playerFacingAngle_L1 = 270.0f;   // left (-X)
+        moved = true;
         break;
 
     case 'd':
     case 'D':
         newX += moveStep;
+        playerFacingAngle_L1 = 90.0f;    // right (+X)
+        moved = true;
         break;
 
     case 'w':
     case 'W':
-        newZ -= moveStep;    // move forward along -Z
+        newZ -= moveStep;                // forward along -Z
+        playerFacingAngle_L1 = 180.0f;   // forward (-Z)
+        moved = true;
         break;
 
     case 's':
     case 'S':
-        newZ += moveStep;    // move backward along +Z
+        newZ += moveStep;                // backward along +Z
+        playerFacingAngle_L1 = 0.0f;     // back (+Z)
+        moved = true;
         break;
 
     case '1':
@@ -1870,6 +1938,13 @@ void keyboardLevel1(unsigned char key, int x, int y) {
     case 27: // ESC
         exit(0);
         return;
+    }
+
+
+    if (moved) {
+        // Reset mouse camera when player moves with keyboard
+        cameraYaw_L1 = 0.0f;
+        cameraPitch_L1 = 0.0f;
     }
 
     // Clamp inside the street only on X
@@ -2089,6 +2164,15 @@ const float riverEndZ = -1500.0f;   // End point
 CameraMode cameraMode_L2 = THIRD_PERSON;
 float thirdPersonDist_L2 = 15.0f;  // Camera distance behind player
 float thirdPersonHeight_L2 = 8.0f; // Camera height above player
+// Camera free-look (mouse) for Level 2
+float cameraYaw_L2 = 0.0f;
+float cameraPitch_L2 = 0.0f;
+bool  mouseDragging_L2 = false;
+int   lastMouseX_L2 = 0, lastMouseY_L2 = 0;
+
+// Player facing direction (Y rotation)
+float playerFacingAngle_L2 = 180.0f;   // forward along -Z
+
 
 // Score
 int score_L2 = 0;
@@ -2410,6 +2494,10 @@ void setupLevel2() {
     playerSpeed_L2 = 20.0f;
     score_L2 = 0;
     playerLives = 5;
+    playerFacingAngle_L2 = 180.0f;
+    cameraYaw_L2 = 0.0f;
+    cameraPitch_L2 = 0.0f;
+
     sunsetProgress = 0.05f;  // Start with small progress so sunset is visible immediately
     sunsetActive = true;
     drBeramRescued = false;
@@ -2505,14 +2593,29 @@ void setupCameraLevel2() {
             0, 1, 0
         );
     }
-    else { // THIRD_PERSON
-        float camX = playerX_L2;
-        float camY = playerY_L2 + thirdPersonHeight_L2;
-        float camZ = playerZ_L2 + thirdPersonDist_L2;
+    else { // THIRD_PERSON with mouse orbit
+        const float DEG2RAD = 3.14159265f / 180.0f;
+
+        float dist = thirdPersonDist_L2;
+        float height = thirdPersonHeight_L2;
+
+        float R = sqrtf(dist * dist + height * height);
+        float basePitch = atanf(height / dist);
+
+        float yawRad = cameraYaw_L2 * DEG2RAD;
+        float pitchRad = basePitch + cameraPitch_L2 * DEG2RAD;
+
+        float camOffsetX = R * sinf(yawRad) * cosf(pitchRad);
+        float camOffsetY = R * sinf(pitchRad);
+        float camOffsetZ = R * cosf(yawRad) * cosf(pitchRad);
+
+        float camX = playerX_L2 + camOffsetX;
+        float camY = playerY_L2 + camOffsetY;
+        float camZ = playerZ_L2 + camOffsetZ;
 
         float lookAtX = playerX_L2;
         float lookAtY = playerY_L2 + 2.0f;
-        float lookAtZ = playerZ_L2 - 5.0f;
+        float lookAtZ = playerZ_L2;
 
         gluLookAt(
             camX, camY, camZ,
@@ -2520,6 +2623,7 @@ void setupCameraLevel2() {
             0, 1, 0
         );
     }
+
 }
 
 
@@ -2793,13 +2897,27 @@ void drawFlyingCollectibles() {
         // IMPORTANT: Set color to white so textures show correctly
         glColor3f(1.0f, 1.0f, 1.0f);
 
-        // Draw the collectible model (textures are already loaded in loadModelsLevel2)
+        // Draw the collectible model (textured)
         collectibleModel_L2.Draw();
 
-        // ========== END TEXTURED MODEL ==========
+        // ------- Red glow around collectible -------
+        glDisable(GL_TEXTURE_2D);
+        glDisable(GL_LIGHTING);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        float glowRadius = 2.0f;   // slightly bigger, because Level 2 collectibles are larger
+        glColor4f(1.0f, 0.2f, 0.2f, 0.6f);
+        glutSolidSphere(glowRadius, 16, 16);
+
+        glDisable(GL_BLEND);
+        glEnable(GL_LIGHTING);
+        glEnable(GL_TEXTURE_2D);
+        // -------------------------------------------
 
         glPopMatrix();
     }
+
 
     // Draw collection animations (particle effects when collected)
     glDisable(GL_LIGHTING);
@@ -3073,25 +3191,26 @@ void drawPlayerLevel2() {
         playerZ_L2 + PLAYER_MODEL_OFFSET_Z_L2
     );
 
-    
-
     if (!winSceneActive) {
-        // Flying pose
-        glRotatef(-FORWARD_TILT_ANGLE, 1, 0, 0);
-        glRotatef(playerRollAngle, 0, 0, 1);
-        glRotatef(playerPitchAngle, 1, 0, 0);
+        // Face the current movement direction first
+        glRotatef(playerFacingAngle_L2, 0, 1, 0);
 
+        // Spin around Y when collecting (additive)
         if (playerSpinning_L2) {
             glRotatef(playerSpinAngle_L2, 0, 1, 0);
         }
+
+        // Flying pose (tilt)
+        glRotatef(-FORWARD_TILT_ANGLE, 1, 0, 0);
+        glRotatef(playerRollAngle, 0, 0, 1);
+        glRotatef(playerPitchAngle, 1, 0, 0);
     }
     else {
-        // Win scene. stand mostly upright. slight idle rotate
+        // Win scene. stand mostly upright, slight idle rotate
+        glRotatef(180.0f, 0, 1, 0);
         glRotatef(sinf(rescueAnimationTime) * 3.0f, 0, 1, 0);
     }
 
-    // Face forward (along -Z)
-    glRotatef(180.0f, 0, 1, 0);
 
 
     // ====== INCREASED PLAYER SCALE ======
@@ -3505,24 +3624,23 @@ void keyboardLevel2(unsigned char key, int x, int y) {
     switch (key) {
     case 'a': case 'A': // Left
         keyStates['a'] = true;
+        cameraYaw_L2 = 0.0f;
+        cameraPitch_L2 = 0.0f;
         break;
     case 'd': case 'D': // Right
         keyStates['d'] = true;
+        cameraYaw_L2 = 0.0f;
+        cameraPitch_L2 = 0.0f;
         break;
     case 'w': case 'W': // Up
         keyStates['w'] = true;
+        cameraYaw_L2 = 0.0f;
+        cameraPitch_L2 = 0.0f;
         break;
     case 's': case 'S': // Down
         keyStates['s'] = true;
-        break;
-    case '1': // First person
-        cameraMode_L2 = FIRST_PERSON;
-        break;
-    case '3': // Third person
-        cameraMode_L2 = THIRD_PERSON;
-        break;
-    case 27: // ESC
-        exit(0);
+        cameraYaw_L2 = 0.0f;
+        cameraPitch_L2 = 0.0f;
         break;
     }
 }
@@ -3618,26 +3736,41 @@ void idleLevel2() {
     // Auto-forward movement (always fly forward)
     playerZ_L2 -= playerSpeed_L2 * deltaTime;
 
-    // Horizontal movement
+    // Horizontal & vertical movement + facing direction
     float turnSpeed = 30.0f * deltaTime;
-    if (keyStates['a']) {
-        playerX_L2 -= turnSpeed;
-        playerRollAngle = 15.0f; // Bank left
-    }
-    if (keyStates['d']) {
-        playerX_L2 += turnSpeed;
-        playerRollAngle = -15.0f; // Bank right
-    }
+    bool movedDir = false;
 
-    // Vertical movement
+    // Vertical movement has priority for facing
     if (keyStates['w']) {
         playerY_L2 += liftForce * deltaTime;
-        playerPitchAngle = -10.0f; // Nose up
+        playerPitchAngle = -10.0f;     // Nose up
+        playerFacingAngle_L2 = 180.0f; // forward (-Z)
+        movedDir = true;
     }
-    if (keyStates['s']) {
+    else if (keyStates['s']) {
         playerY_L2 -= liftForce * deltaTime;
-        playerPitchAngle = 10.0f; // Nose down
+        playerPitchAngle = 10.0f;      // Nose down
+        playerFacingAngle_L2 = 0.0f;   // back (+Z)
+        movedDir = true;
     }
+    else if (keyStates['a']) {
+        playerX_L2 -= turnSpeed;
+        playerRollAngle = 15.0f;       // Bank left
+        playerFacingAngle_L2 = 270.0f; // left (-X)
+        movedDir = true;
+    }
+    else if (keyStates['d']) {
+        playerX_L2 += turnSpeed;
+        playerRollAngle = -15.0f;      // Bank right
+        playerFacingAngle_L2 = 90.0f;  // right (+X)
+        movedDir = true;
+    }
+
+    if (!movedDir) {
+        // No directional keys. look forward
+        playerFacingAngle_L2 = 180.0f;
+    }
+
 
     // Speed control
     if (specialKeyStates[GLUT_KEY_UP]) {
@@ -4186,6 +4319,74 @@ void reshapeMaster(int w, int h) {
     glMatrixMode(GL_MODELVIEW);
 }
 
+void mouseMaster(int button, int state, int x, int y) {
+    if (button != GLUT_LEFT_BUTTON)
+        return;
+
+    if (state == GLUT_DOWN) {
+        if (currentScreen == SCREEN_LEVEL1) {
+            mouseDragging_L1 = true;
+            lastMouseX_L1 = x;
+            lastMouseY_L1 = y;
+        }
+        else if (currentScreen == SCREEN_LEVEL2) {
+            mouseDragging_L2 = true;
+            lastMouseX_L2 = x;
+            lastMouseY_L2 = y;
+        }
+    }
+    else if (state == GLUT_UP) {
+        if (currentScreen == SCREEN_LEVEL1) {
+            mouseDragging_L1 = false;
+        }
+        else if (currentScreen == SCREEN_LEVEL2) {
+            mouseDragging_L2 = false;
+        }
+    }
+}
+
+void motionMaster(int x, int y) {
+    bool changed = false;
+
+    if (currentScreen == SCREEN_LEVEL1) {
+        if (!mouseDragging_L1) return;
+
+        int dx = x - lastMouseX_L1;
+        int dy = y - lastMouseY_L1;
+        lastMouseX_L1 = x;
+        lastMouseY_L1 = y;
+
+        cameraYaw_L1 += dx * MOUSE_SENSITIVITY;
+        cameraPitch_L1 += dy * MOUSE_SENSITIVITY;
+
+        if (cameraPitch_L1 > MAX_CAMERA_PITCH) cameraPitch_L1 = MAX_CAMERA_PITCH;
+        if (cameraPitch_L1 < -MAX_CAMERA_PITCH) cameraPitch_L1 = -MAX_CAMERA_PITCH;
+
+        changed = true;
+    }
+    else if (currentScreen == SCREEN_LEVEL2) {
+        if (!mouseDragging_L2) return;
+
+        int dx = x - lastMouseX_L2;
+        int dy = y - lastMouseY_L2;
+        lastMouseX_L2 = x;
+        lastMouseY_L2 = y;
+
+        cameraYaw_L2 += dx * MOUSE_SENSITIVITY;
+        cameraPitch_L2 += dy * MOUSE_SENSITIVITY;
+
+        if (cameraPitch_L2 > MAX_CAMERA_PITCH) cameraPitch_L2 = MAX_CAMERA_PITCH;
+        if (cameraPitch_L2 < -MAX_CAMERA_PITCH) cameraPitch_L2 = -MAX_CAMERA_PITCH;
+
+        changed = true;
+    }
+
+    if (changed) {
+        glutPostRedisplay();
+    }
+}
+
+
 
 // ===============================
 // SINGLE MAIN FUNCTION (shared by both levels)
@@ -4212,6 +4413,9 @@ int main(int argc, char** argv) {
     glutSpecialFunc(specialKeysMaster);
     glutSpecialUpFunc(specialUpMaster);
     glutReshapeFunc(reshapeMaster);
+    // NEW: mouse camera
+    glutMouseFunc(mouseMaster);
+    glutMotionFunc(motionMaster);
 
     glutMainLoop();
     return 0;
