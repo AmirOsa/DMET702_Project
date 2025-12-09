@@ -3618,27 +3618,56 @@ void drawGameStatusLevel2() {
 // ===============================
 
 void keyboardLevel2(unsigned char key, int x, int y) {
+    // ESC should always exit in Level 2
+    if (key == 27) {
+        exit(0);
+        return;
+    }
+
+    // If the mission is finished or failed, ignore other keys
     if (gameState_L2 != GAME_PLAYING) {
-        if (key == 27) exit(0); // ESC to exit
         return;
     }
 
     switch (key) {
+        // Camera mode keys for Level 2
+    case '1':
+        // First person camera for Level 2
+        cameraMode_L2 = FIRST_PERSON;
+        // Reset mouse orbit so the view is stable
+        cameraYaw_L2 = 0.0f;
+        cameraPitch_L2 = 0.0f;
+        glutPostRedisplay();
+        break;
+
+    case '3':
+        // Third person camera for Level 2
+        cameraMode_L2 = THIRD_PERSON;
+        // Reset mouse orbit
+        cameraYaw_L2 = 0.0f;
+        cameraPitch_L2 = 0.0f;
+        glutPostRedisplay();
+        break;
+
+        // Movement keys
     case 'a': case 'A': // Left
         keyStates['a'] = true;
         cameraYaw_L2 = 0.0f;
         cameraPitch_L2 = 0.0f;
         break;
+
     case 'd': case 'D': // Right
         keyStates['d'] = true;
         cameraYaw_L2 = 0.0f;
         cameraPitch_L2 = 0.0f;
         break;
+
     case 'w': case 'W': // Up
         keyStates['w'] = true;
         cameraYaw_L2 = 0.0f;
         cameraPitch_L2 = 0.0f;
         break;
+
     case 's': case 'S': // Down
         keyStates['s'] = true;
         cameraYaw_L2 = 0.0f;
@@ -3646,6 +3675,7 @@ void keyboardLevel2(unsigned char key, int x, int y) {
         break;
     }
 }
+
 
 void keyboardUpLevel2(unsigned char key, int x, int y) {
     switch (key) {
